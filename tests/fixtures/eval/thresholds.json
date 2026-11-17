@@ -1,0 +1,14 @@
+{
+  "_comment": "null means not yet approved. Establish the baseline first, then set approved minimums here.",
+  "overall": {"precision": null, "recall": null, "f1": null},
+  "per_type": {
+    "PERSON": {"precision": null, "recall": null},
+    "EMAIL": {"precision": null, "recall": null},
+    "PHONE": {"precision": null, "recall": null},
+    "FINANCIAL": {"precision": null, "recall": null},
+    "BUSINESS_CONFIDENTIAL": {"precision": null, "recall": null},
+    "IN_AADHAAR": {"precision": null, "recall": null},
+    "IN_PAN": {"precision": null, "recall": null},
+    "IN_IFSC": {"precision": null, "recall": null}
+  }
+}

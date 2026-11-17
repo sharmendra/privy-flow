@@ -1,0 +1,31 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Install dependencies
+        run: uv sync --all-groups --python ${{ matrix.python-version }}
+      - name: Lint and format
+        run: uv run scripts/run_tests.py lint
+      - name: Type check
+        run: uv run pyright
+      - name: Tests with coverage
+        run: uv run scripts/run_tests.py all
+      - name: Security scan and dependency audit
+        run: uv run scripts/run_tests.py scan
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports-${{ matrix.python-version }}
+          path: reports/
