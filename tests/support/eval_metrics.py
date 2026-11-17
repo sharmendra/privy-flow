@@ -5,7 +5,7 @@ A prediction counts as correct only if entity type, start and end all match a go
 
 import json
 from collections import defaultdict
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -23,6 +23,8 @@ ENTITY_TYPES = (
     "IN_AADHAAR",
     "IN_PAN",
     "IN_IFSC",
+    "IP_ADDRESS",
+    "US_SSN",
 )
 
 
@@ -85,6 +87,8 @@ class Report:
     per_type: dict[str, Counts] = field(default_factory=lambda: defaultdict(Counts))
     negative_documents: int = 0
     negative_documents_with_detections: int = 0
+    # Gold spans of types the detector cannot detect. They are counted, never scored.
+    not_covered: dict[str, int] = field(default_factory=lambda: defaultdict(int))
 
     @property
     def negative_document_fp_rate(self) -> float:
@@ -97,6 +101,7 @@ class Report:
             "per_type": {t: c.as_dict() for t, c in sorted(self.per_type.items())},
             "negative_documents": self.negative_documents,
             "negative_document_fp_rate": self.negative_document_fp_rate,
+            "not_covered": dict(sorted(self.not_covered.items())),
         }
 
 
@@ -124,15 +129,27 @@ def load_dataset(path: Path = FIXTURES / "detection_dataset.jsonl") -> list[Exam
     return examples
 
 
-def evaluate(examples: Iterable[Example], detector: Detector) -> Report:
+def evaluate(
+    examples: Iterable[Example],
+    detector: Detector,
+    covered_types: Collection[str] | None = None,
+) -> Report:
+    """Score a detector. With `covered_types`, gold spans of other types are reported as not
+    covered instead of being scored as misses; predictions are always scored."""
     report = Report()
     for ex in examples:
         predicted = frozenset(detector(ex.text))
         if not ex.gold:
             report.negative_documents += 1
             report.negative_documents_with_detections += bool(predicted)
-        for span in predicted | ex.gold:
-            in_pred, in_gold = span in predicted, span in ex.gold
+        gold = ex.gold
+        if covered_types is not None:
+            for span in gold:
+                if span[0] not in covered_types:
+                    report.not_covered[span[0]] += 1
+            gold = frozenset(span for span in gold if span[0] in covered_types)
+        for span in predicted | gold:
+            in_pred, in_gold = span in predicted, span in gold
             for counts in (report.overall, report.per_type[span[0]]):
                 if in_pred and in_gold:
                     counts.tp += 1
@@ -154,6 +171,8 @@ def threshold_failures(report: Report, thresholds: dict[str, Any]) -> list[str]:
         ("overall", report.overall, thresholds.get("overall", {}))
     ]
     for etype, limits in thresholds.get("per_type", {}).items():
+        if etype in report.not_covered:
+            continue  # not covered is neither a pass nor a failure
         scopes.append((etype, report.per_type[etype], limits))
     for name, counts, limits in scopes:
         values = counts.as_dict()

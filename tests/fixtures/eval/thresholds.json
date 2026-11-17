@@ -9,6 +9,8 @@
     "BUSINESS_CONFIDENTIAL": {"precision": null, "recall": null},
     "IN_AADHAAR": {"precision": null, "recall": null},
     "IN_PAN": {"precision": null, "recall": null},
-    "IN_IFSC": {"precision": null, "recall": null}
+    "IN_IFSC": {"precision": null, "recall": null},
+    "IP_ADDRESS": {"precision": null, "recall": null},
+    "US_SSN": {"precision": null, "recall": null}
   }
 }

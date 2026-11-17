@@ -313,6 +313,29 @@ Database backend: tables `settings_snapshots` (append-only, highest version wins
 
 Command line tool `uv run scripts/settings.py`: `validate`, `show`, `import` (prints a diff, `--dry-run`, writes nothing if invalid or unchanged) and `export` (refuses to overwrite without `--force`). Database commands use `PRIVYFLOW_SAN_SETTINGS_ADMIN_DATABASE_URL`. Exit codes: 0 done, 1 failed or invalid, 2 setup missing.
 
+### 9.11 Pilot recognizers and span rules (Sanitization Service)
+
+Decision D1 limits detection to six deterministic recognizers. Each reports an entity type and character offsets, never the matched text. Detection is best effort and the formats below are the only ones found; anything else passes through unmasked.
+
+| Type | Found | Not found or rejected |
+|---|---|---|
+| `EMAIL` | `local@domain.tld`, ASCII local part (letters, digits, `._%+-`), dotted domain, alphabetic TLD of 2 or more letters. Trailing sentence punctuation is excluded. | Addresses with no dot in the domain (`user@localhost`), doubled `@` or dots, non-ASCII local parts. |
+| `PHONE` | `+1` with ten digits (`+1 202-555-0143`, `+12025550143`); other `+CC` numbers as `CC`, then 4 to 5 digits, then 4 to 6 digits (`+91 98765 43210`, `+44 7911 123456`); ten digits as `202-555-0143`, `202.555.0143` or `(202) 555-0143`; Indian national format `098765 43210`. | Other national layouts, extensions, and anything followed directly by a letter, digit or hyphen (`202-555-0143-B`). |
+| `FINANCIAL` | A payment card number: 13 to 19 digits that pass the Luhn check, as one run of digits or groups of at least four digits split by single spaces or hyphens. Every window of groups in a run is tried, so a neighbouring number does not hide a card. | IBANs and other account numbers, numbers that fail the checksum, and numbers split into groups of fewer than four digits. About one random 13 to 19 digit number in ten passes Luhn, so a number that is not a card can still be masked. |
+| `IN_PAN` | Five capital letters, four digits, one capital letter. | Lowercase, and any PAN held inside a longer alphanumeric run. The fourth letter (holder type) is not checked. |
+| `IP_ADDRESS` | IPv4 with octets 0 to 255 and no leading zeros; IPv6 in any form the Python standard library parses, including `::` compression and IPv4-mapped addresses (`::ffff:192.0.2.1`). A trailing full stop or colon is excluded. | Dotted values with 5 or more parts, out-of-range octets, times, and MAC addresses. The unspecified address `::` alone is ignored. |
+| `US_SSN` | `AAA-GG-SSSS` or the same with spaces, one separator style throughout. | Area `000` or `666`, group `00`, serial `0000`, mixed separators, and values glued to other digits or hyphens. Unseparated nine-digit values are not detected. Areas `900` to `999` are accepted so the synthetic test values in ADR 0001 are found. |
+
+Overlap rule (D6), applied after detections are filtered to the entity types the tenant's policy names, so a type nobody asked to mask cannot hide one that was:
+
+1. The longest span wins.
+2. Equal length: the higher `priority` in `entity_types.json` wins. Priorities are unique.
+3. Still equal: the earliest start wins.
+4. A shorter span that overlaps a winner is dropped. Spans that only touch (one ends where the next starts) do not overlap.
+5. A winner takes `redact` if it, or any span it overlapped, is `redact`; otherwise `placeholder`. A dropped span that overlaps two winners counts toward both.
+
+The overlap rule and the policy merge are implemented in `app/detection/overlap.py`, `app/sanitization/policy.py` and `app/sanitization/spans.py`. Placeholder text and replacement belong to the next phase.
+
 ## 10. Acceptance criteria for the core engine
 
 - Both services run independently.

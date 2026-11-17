@@ -13,21 +13,26 @@ from app.core.errors import register_error_handlers
 from app.core.logging import configure_logging, log_event
 from app.core.middleware import RequestContextMiddleware
 from app.db.session import get_engine
+from app.sanitization.policy import PolicyResolver
 from app.settings.selector import load_snapshot
 
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
-    """Load settings once. A failure leaves the service alive but not ready, with no fallback."""
+    """Load settings and build the tenant policies once. A failure at either step leaves the
+    service alive but not ready, with no fallback."""
     app.state.settings_snapshot = None
+    app.state.policy_resolver = None
     try:
         bootstrap = load_settings()
         engine = get_engine(app) if bootstrap.settings_backend == "db" else None
         snapshot = load_snapshot(bootstrap, engine)
+        resolver = PolicyResolver(snapshot.content)
     except Exception as exc:
         log_event("settings_load_failed", logging.ERROR, error_category=type(exc).__name__)
     else:
         app.state.settings_snapshot = snapshot
+        app.state.policy_resolver = resolver
         log_event(
             "settings_loaded",
             settings_backend=snapshot.backend,

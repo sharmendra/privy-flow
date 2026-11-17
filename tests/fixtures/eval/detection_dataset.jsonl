@@ -25,5 +25,16 @@
 {"id":"neg-02","note":"16-digit order id that is not a card","text":"Order 1234567890123456 shipped on time.","entities":[]}
 {"id":"neg-03","note":"malformed email and truncated phone","text":"Contact asha@@example..com or dial 555-01 for help.","entities":[]}
 {"id":"neg-04","note":"place name that can also be a person name","text":"The shipment to Jordan was delayed.","entities":[]}
-{"id":"neg-05","note":"IP address and version string","text":"Server 192.168.1.10 runs build v2.3.4-1234.","entities":[]}
+{"id":"neg-05","note":"version strings are not IP addresses","text":"Build v2.3.4-1234 shipped on time.","entities":[]}
 {"id":"neg-06","note":"ambiguous part number that resembles a phone number","text":"Part number 202-555-0143-B is back in stock.","entities":[]}
+{"id":"ip-01","note":"IPv4 in the RFC 5737 block 192.0.2.0/24","text":"Login came from 192.0.2.44 at noon.","entities":[{"type":"IP_ADDRESS","text":"192.0.2.44"}]}
+{"id":"ip-02","note":"two IPv4 addresses from different RFC 5737 blocks","text":"Blocked 198.51.100.7 and 203.0.113.250 after repeated attempts.","entities":[{"type":"IP_ADDRESS","text":"198.51.100.7"},{"type":"IP_ADDRESS","text":"203.0.113.250"}]}
+{"id":"ip-03","note":"IPv6 in 2001:db8::/32, one followed by a full stop","text":"Client 2001:db8::8a2e:370:7334 connected, fallback 2001:db8::1.","entities":[{"type":"IP_ADDRESS","text":"2001:db8::8a2e:370:7334"},{"type":"IP_ADDRESS","text":"2001:db8::1"}]}
+{"id":"ip-04","note":"IPv4-mapped IPv6 address is one entity","text":"Mapped address ::ffff:192.0.2.128 was logged.","entities":[{"type":"IP_ADDRESS","text":"::ffff:192.0.2.128"}]}
+{"id":"ssn-01","note":"SSN-format value in a never-issued area (900 to 999)","text":"SSN 900-12-3456 was on the form.","entities":[{"type":"US_SSN","text":"900-12-3456"}]}
+{"id":"ssn-02","note":"two SSN-format values, one space separated","text":"Applicants listed 987 65 4321 and 912-34-5678.","entities":[{"type":"US_SSN","text":"987 65 4321"},{"type":"US_SSN","text":"912-34-5678"}]}
+{"id":"ssn-03","note":"email, IP address and SSN together","text":"Contact noah.kim@example.com from 203.0.113.9 about SSN 931-45-6789.","entities":[{"type":"EMAIL","text":"noah.kim@example.com"},{"type":"IP_ADDRESS","text":"203.0.113.9"},{"type":"US_SSN","text":"931-45-6789"}]}
+{"id":"card-adjacent-01","note":"card next to other numbers is still one entity","text":"Invoice 123 4111 1111 1111 1111 paid from 192.0.2.1 today.","entities":[{"type":"FINANCIAL","text":"4111 1111 1111 1111"},{"type":"IP_ADDRESS","text":"192.0.2.1"}]}
+{"id":"neg-07","note":"impossible SSN ranges are not entities","text":"Values 000-12-3456, 666-12-3456, 900-00-3456 and 900-12-0000 are never issued.","entities":[]}
+{"id":"neg-08","note":"malformed IP addresses","text":"Version 999.1.1.1, address 192.0.2.256 and build 1.2.3.4.5 are not IP addresses.","entities":[]}
+{"id":"neg-09","note":"times and MAC addresses are not IPv6","text":"Meeting 10:30:45 and MAC 00:1A:2B:3C:4D:5E are not addresses.","entities":[]}

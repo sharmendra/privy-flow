@@ -7,8 +7,7 @@ without a test that covers it.
 import pytest
 
 PENDING = [
-    "entity detection per configured entity type",
-    "detection confidence and policy selection",
+    "detection confidence scores (the pilot recognizers report none)",
     "placeholder generation is collision resistant",
     "repeated values map to one placeholder within a request",
     "restore-reference is high entropy and unpredictable",

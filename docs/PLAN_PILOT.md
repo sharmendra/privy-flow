@@ -1,6 +1,6 @@
 # PLAN_PILOT.md
 
-Status: decisions D1 to D17 and questions Q1 to Q8 resolved on the recommended approach (owner instruction, 2026-11-17). Phase 1 (documentation) implemented 2026-11-17, with one criterion awaiting owner review. Phase 2 (service foundations) implemented 2026-11-17, with one criterion open (see below). Phase 2A (settings store) implemented 2026-11-17, with one criterion open (see below). Phases 3 onward are not started.
+Status: decisions D1 to D17 and questions Q1 to Q8 resolved on the recommended approach (owner instruction, 2026-11-17). Phase 1 (documentation) implemented 2026-11-17, with one criterion awaiting owner review. Phase 2 (service foundations) implemented 2026-11-17, with one criterion open (see below). Phase 2A (settings store) implemented 2026-11-17, with one criterion open (see below). Phase 3 (detection and policy) implemented 2026-11-17, with one criterion open (see below). Phases 4 onward are not started.
 
 ## Objective
 
@@ -282,18 +282,18 @@ Success criteria:
 What it builds: a `Recognizer` interface, the pilot recognizers (D1), the overlap resolver (D6), the compliance profile loader, the per-tenant flags (both read through the settings store from phase 2A, so they work with either backend), and the resolver that merges enabled profiles into one effective policy. Why: detection must sit behind an interface so engines can change later without touching the API. Starting with deterministic recognizers keeps the pilot testable without models.
 
 Success criteria:
-- [ ] Unit tests pass for each of the six pilot recognizers (EMAIL, PHONE, FINANCIAL, IN_PAN, IP_ADDRESS, US_SSN), including Luhn validation for cards, invalid IPv4 octets and valid IPv6 forms for IP_ADDRESS, rejection of impossible SSN ranges, and negative examples from the dataset.
-- [ ] New synthetic IP_ADDRESS and US_SSN examples, with positive and negative cases, are added to `tests/fixtures/eval/detection_dataset.jsonl`. SSN-format values use ranges reviewed in phase 1 so none can be a real person's number, and the dataset integrity tests still pass.
-- [ ] Overlap, adjacency, and nested-span tests pass for the documented D6 rule.
-- [ ] The detection evaluation runs against `tests/fixtures/eval/detection_dataset.jsonl` for the pilot entity types and writes `reports/detection_eval.json`.
-- [ ] Per-type and overall precision, recall, and F1 for the pilot types are recorded in `docs/STATUS.md` as a baseline. `thresholds.json` stays `null` until the owner approves minimums.
-- [ ] Dataset types outside the pilot (PERSON, Aadhaar, IFSC, business terms) are reported as not covered, not as failures or passes.
-- [ ] Profile loading tests pass: all six profiles load; an unknown profile ID, an empty enabled list, and a malformed tenant ID each fail startup with a safe message.
-- [ ] The same tenant flags give the same effective policy whether loaded from the file backend or the database backend.
-- [ ] A tenant with no flag entry resolves to `gdpr` only; a tenant with several profiles resolves to the union of their entity types.
-- [ ] Conflict tests pass for every rule in the restrictiveness table, using synthetic test profiles that disagree on action and lifetime.
-- [ ] Hypothesis properties pass: adding a profile never removes an entity from the masked set or lengthens the lifetime, and listing order does not change the result.
-- [ ] Uncovered entity types are reported for each profile, and the strict flag fails startup when it is on.
+- [x] Unit tests pass for each of the six pilot recognizers (EMAIL, PHONE, FINANCIAL, IN_PAN, IP_ADDRESS, US_SSN), including Luhn validation for cards, invalid IPv4 octets and valid IPv6 forms for IP_ADDRESS, rejection of impossible SSN ranges, and negative examples from the dataset. (`tests/unit/test_recognizers.py`, 120 cases. Dataset negatives are checked by `tests/evaluation/test_detection_baseline.py`.)
+- [x] New synthetic IP_ADDRESS and US_SSN examples, with positive and negative cases, are added to `tests/fixtures/eval/detection_dataset.jsonl`. SSN-format values use ranges reviewed in phase 1 so none can be a real person's number, and the dataset integrity tests still pass. (8 positive and 3 negative documents added; also rewrote `neg-05`, which held a private IP as a negative. Owner review of that change is requested in `docs/STATUS.md`.)
+- [x] Overlap, adjacency, and nested-span tests pass for the documented D6 rule. (`tests/unit/test_overlap.py`, including Hypothesis properties.)
+- [x] The detection evaluation runs against `tests/fixtures/eval/detection_dataset.jsonl` for the pilot entity types and writes `reports/detection_eval.json`. (`tests/evaluation/test_detection_baseline.py`; report is git-ignored under `reports/`.)
+- [x] Per-type and overall precision, recall, and F1 for the pilot types are recorded in `docs/STATUS.md` as a baseline. `thresholds.json` stays `null` until the owner approves minimums. (Recorded in `docs/STATUS.md`, phase 3 evidence. Thresholds still `null`.)
+- [x] Dataset types outside the pilot (PERSON, Aadhaar, IFSC, business terms) are reported as not covered, not as failures or passes. (Counted under `not_covered` in the report and skipped by threshold checks.)
+- [x] Profile loading tests pass: all six profiles load; an unknown profile ID, an empty enabled list, and a malformed tenant ID each fail startup with a safe message. (`test_profiles.py`, `test_policy.py`, and the database-free tests in `test_policy_startup.py`.)
+- [ ] The same tenant flags give the same effective policy whether loaded from the file backend or the database backend. (Open: `test_the_same_flags_give_the_same_effective_policy_from_file_and_database` is written but has not run. Docker was off and no database URL was set. Tick it after a run with PostgreSQL.)
+- [x] A tenant with no flag entry resolves to `gdpr` only; a tenant with several profiles resolves to the union of their entity types. (`test_policy.py`.)
+- [x] Conflict tests pass for every rule in the restrictiveness table, using synthetic test profiles that disagree on action and lifetime. (`test_policy.py`, one test per rule.)
+- [x] Hypothesis properties pass: adding a profile never removes an entity from the masked set or lengthens the lifetime, and listing order does not change the result. (`test_policy.py`.)
+- [x] Uncovered entity types are reported for each profile, and the strict flag fails startup when it is on. (Unit tests. The readiness 503 check under strict coverage is in `test_policy_startup.py` and has not run: it needs PostgreSQL. Strict coverage currently always fails because the default `gdpr` profile names types with no recognizer.)
 
 ### Phase 4. Placeholder sanitization
 

@@ -38,7 +38,7 @@ Tick each box only after verifying it with tests, commands, or API calls, and re
 
 ### Phase 2. Sanitization detection and policies
 - [ ] Representative test corpus and detection-quality baseline are documented.
-- [ ] Detection evaluation runs against the synthetic dataset and the per-type and overall baseline is recorded.
+- [ ] Detection evaluation runs against the synthetic dataset and the per-type and overall baseline is recorded. (Partly met by pilot phase 3: baseline recorded for the six pilot types only, 2026-11-17. PERSON and the other types are not covered, so this stays open.)
 - [ ] Acceptance thresholds are approved by the product owner and set in `thresholds.json`.
 
 ### Phase 3. Placeholder sanitization

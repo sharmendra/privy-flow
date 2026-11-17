@@ -37,8 +37,8 @@ The project documentation defines the target architecture and requirements. Do n
 | Product and service boundaries | Defined |
 | Sanitization API | To be implemented / verified |
 | De-sanitization API | To be implemented / verified |
-| Sensitive entity detection | Planned |
-| Policy engine | Planned |
+| Sensitive entity detection | Six pilot recognizers implemented and executed, pilot phase 3 (see section 4); no PERSON, Aadhaar, address or date detection |
+| Policy engine | Profile loader, effective-policy resolver and overlap rule implemented and executed, pilot phase 3; not yet used by an API |
 | Placeholder generation | Planned |
 | Encrypted mapping vault | Planned |
 | Credential hashing and lookup | Planned |
@@ -49,8 +49,8 @@ The project documentation defines the target architecture and requirements. Do n
 | Settings store (file and database backends, validation, audit, CLI) | Implemented and executed, pilot phase 2A (see section 4) |
 | Service foundations (both apps, health, correlation IDs, redacted logging, error body, vault table migration) | Implemented and executed, pilot phase 2 (see section 4) |
 | Test harness foundation | Implemented and executed (see section 4) |
-| Service-level tests (unit, integration, security, end-to-end) | Phase 2 tests run (health, migrations, redaction, error shape, database boundary); the rest are pending and skipped with a reason |
-| Detection evaluation dataset and metrics | Implemented and executed; no detector exists, so no detection baseline |
+| Service-level tests (unit, integration, security, end-to-end) | Phase 2, 2A and 3 tests written; database-backed ones did not run in the last session (no Docker, no database URL). The rest are pending and skipped with a reason |
+| Detection evaluation dataset and metrics | Implemented and executed; pilot baseline recorded in phase 3 evidence; thresholds still unapproved (`null`) |
 | CI workflow | Written, not yet run (no remote) |
 | Performance (Locust) | Script written, not executed |
 | Production deployment | Not approved |
@@ -59,7 +59,7 @@ Update each row only after inspecting code and running the relevant tests.
 
 ## 4. What is built and how to run it
 
-The repository contains documentation, the test harness, and the pilot phase 2 service foundations: two FastAPI apps with health endpoints, correlation IDs, allowlist logging and the standard error body, plus the Sanitization `mapping_records` migration. There is no sanitization, vault logic, authentication or restoration yet.
+The repository contains documentation, the test harness, and the pilot phase 2 service foundations: two FastAPI apps with health endpoints, correlation IDs, allowlist logging and the standard error body, plus the Sanitization `mapping_records` migration. Phase 3 added detection (six regex and checksum recognizers), the profile loader, the effective-policy resolver and the span planner. There is no placeholder substitution, vault logic, authentication or restoration yet.
 
 Run locally (PowerShell or macOS; values stay in git-ignored files):
 
@@ -119,7 +119,8 @@ Not verified:
 | 1. Decisions, contracts, threat model | Documentation complete 2026-11-17. One criterion open: owner review of the profile files (see below). |
 | 2. Service foundations | Implemented 2026-11-17; one criterion open pending an owner decision on the coverage gate (see "Phase 2 evidence"). |
 | 2A. Settings store | Implemented 2026-11-17; one criterion open (macOS run of the CLI). |
-| 3 to 8 | Not started |
+| 3. Detection and policy | Implemented 2026-11-17; one criterion open: the file-versus-database policy comparison test is written but has not run (see "Phase 3 evidence"). |
+| 4 to 8 | Not started |
 
 Phase 1 delivered (documentation and data only, no service code, no test changes):
 
@@ -194,6 +195,54 @@ Decisions and limits to know about:
 - Not verified: the settings CLI on macOS.
 - Not built: the effective policy resolver (phase 3), live reload, an admin API, and per-request profile selection.
 
+### Phase 3 evidence (detection and policy)
+
+Recorded 2026-11-17, Windows, Python 3.13.13.
+
+Database-backed tests did not run this session. Docker Desktop was not running and `PRIVYFLOW_TEST_DATABASE_URL` was not set in the shell, although the local PostgreSQL service (`postgresql-x64-18`) was up. I did not look for or guess a password. Every database test therefore failed with the Docker error instead of skipping, as designed. The Testcontainers path has still never run.
+
+| Command | Result |
+|---|---|
+| `uv run scripts/run_tests.py unit` | 236 passed, 0 failed, 19 skipped; coverage 80.17% (minimum 80%). The gate passes only because phase 3 code is pure logic; it will fail again once database-heavy code lands, so the phase 2 open item stands. |
+| `uv run scripts/run_tests.py evaluation` | 24 passed, 0 failed, 0 skipped. This suite was previously skipped for lack of a detector. |
+| `uv run scripts/run_tests.py security` | 5 passed, 0 failed, 17 skipped |
+| `uv run scripts/run_tests.py all` | 331 passed, 16 failed, 54 skipped, 45 errors; coverage 95.66%. All 16 failures and 45 errors are integration tests that need PostgreSQL (the Docker error `CreateFile ... cannot find the file specified`). None is in phase 3 code. |
+| `uv run scripts/run_tests.py lint` | Ruff check and format check passed |
+| `uv run pyright` | 0 errors, 0 warnings |
+| `uv run scripts/run_tests.py scan` | `pip-audit`: no known vulnerabilities. Bandit on `services`: no findings. |
+| Mutation spot checks (by hand, then reverted) | Longest-span rule removed, redact-beats-placeholder removed, profile TTL ignored, Luhn check removed: each made tests fail |
+
+New tests: `tests/unit/test_recognizers.py`, `test_overlap.py`, `test_profiles.py`, `test_policy.py`, `test_span_planning.py` (Hypothesis properties for overlap and policy included); `tests/evaluation/test_detection_baseline.py` and `test_dataset.py` extended; `tests/integration/test_policy_startup.py`. In that last file, 3 of 5 tests need no database and passed; the 2 that need one (file-versus-database policy equality, and readiness 503 under strict coverage) did not run.
+
+Detection baseline (`reports/detection_eval.json`, strict span match, 33 scored spans over 40 documents; recorded for the owner to approve thresholds, none are set):
+
+| Type | TP | FP | FN | Precision | Recall | F1 |
+|---|---|---|---|---|---|---|
+| EMAIL | 10 | 0 | 0 | 1.000 | 1.000 | 1.000 |
+| PHONE | 5 | 0 | 0 | 1.000 | 1.000 | 1.000 |
+| FINANCIAL | 3 | 0 | 1 | 1.000 | 0.750 | 0.857 |
+| IN_PAN | 2 | 0 | 0 | 1.000 | 1.000 | 1.000 |
+| IP_ADDRESS | 8 | 0 | 0 | 1.000 | 1.000 | 1.000 |
+| US_SSN | 4 | 0 | 0 | 1.000 | 1.000 | 1.000 |
+| Overall | 32 | 0 | 1 | 1.000 | 0.970 | 0.985 |
+
+Negative documents: 9, with 0 containing a detection. Not covered, so reported and not scored: PERSON (17 spans), BUSINESS_CONFIDENTIAL (5), IN_AADHAAR (3), IN_IFSC (1).
+
+Read this baseline with care. The same person wrote the recognizers and the dataset, and the dataset is small (40 documents), so perfect scores mostly show the recognizers handle the cases their author thought of. They are not a quality claim. The one miss is the IBAN example: D1 covers cards only, so the IBAN counts against FINANCIAL recall. Whether to add IBAN is an owner decision.
+
+Dataset changes: added 8 positive and 3 negative documents (`ip-01` to `ip-04`, `ssn-01` to `ssn-03`, `card-adjacent-01`, `neg-07` to `neg-09`), and added IP_ADDRESS and US_SSN to the entity list and `thresholds.json` (still `null`). I also rewrote `neg-05`. It held `192.168.1.10` as a negative, which was correct before IP_ADDRESS existed and wrong now (and is outside the reserved test ranges). It now holds only a version string. Review this change.
+
+Decisions and limits to know about:
+
+- Detections are filtered to the types a tenant's policy names before overlaps are resolved, so an unlisted type cannot hide a listed one (SPEC 9.11).
+- A dropped span counts toward every winner it overlaps, including a shorter winner chosen after it. This can raise a winner to `redact`; it never lowers one.
+- The default `gdpr` profile applies to every tenant with no entry, so `strict_coverage: true` always fails today (gdpr names PERSON, ADDRESS and others with no recognizer). That is the intended honest behavior; it means the flag cannot be switched on until detection grows.
+- A settings load error or a policy error both leave the service alive but not ready, with only an error category logged.
+- Card detection can mask a number that is not a card (about 1 in 10 random 13 to 19 digit numbers pass Luhn), and misses cards split into groups under four digits.
+- The IPv6 recognizer treats any standard-library-valid address as one, so a value such as `a::b` in prose or code is masked.
+- Recognizers report no confidence. The "confidence" pending test stays pending.
+- Not built: placeholder text and replacement (phase 4), the policy endpoint, and API-key tenant resolution (phase 5).
+
 ## 5. Validation checklist
 
 - [ ] Inspect the repository and remove or archive obsolete extraction-service scaffolding only after review.
@@ -202,7 +251,7 @@ Decisions and limits to know about:
 - [x] Confirm De-sanitization has no mapping database credentials. (Phase 2: no database setting, ignores one if supplied; tested.)
 - [x] Define and approve public and internal API contracts. Pilot contracts: `docs/SPEC.md` section 9, approved 2026-11-17.
 - [ ] Implement authentication and authorization boundaries.
-- [ ] Implement recognizer and policy baseline.
+- [x] Implement recognizer and policy baseline. (Phase 3: six recognizers, overlap rule D6, six profiles, restrictiveness rules; one database-backed test has not run.)
 - [ ] Implement placeholder generation and collision handling.
 - [ ] Implement secure credential generation and hash lookup.
 - [ ] Implement authenticated encryption and key-version metadata.
