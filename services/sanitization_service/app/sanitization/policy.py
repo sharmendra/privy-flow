@@ -75,10 +75,9 @@ class PolicyResolver:
 
     def _require_full_coverage(self) -> None:
         # The default profile applies to every tenant without an entry, so it always counts.
-        uncovered = {
-            t for policy in (self._default, *self._tenants.values())
-            for t in policy.uncovered_entity_types
-        }  # fmt: skip
+        uncovered: set[str] = set()
+        for policy in (self._default, *self._tenants.values()):
+            uncovered.update(policy.uncovered_entity_types)
         if uncovered:
             raise SettingsError(
                 "strict coverage: enabled profiles name entity types without a recognizer: "

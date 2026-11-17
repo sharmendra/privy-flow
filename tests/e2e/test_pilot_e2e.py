@@ -331,7 +331,10 @@ def test_the_vault_holds_only_a_digest_and_ciphertext(stack: Stack) -> None:
 
 def test_concurrent_sanitize_and_restore_requests_do_not_mix_mappings(stack: Stack) -> None:
     def work(n: int) -> tuple[str, str]:
-        text = f"Call {n} at user{n}@example.com or +1 202-555-{100 + n:04d} from 192.0.2.{n % 250 + 1}."
+        text = (
+            f"Call {n} at user{n}@example.com or +1 202-555-{100 + n:04d} "
+            f"from 192.0.2.{n % 250 + 1}."
+        )
         _, restored = stack.round_trip(text, TENANT_A if n % 2 else TENANT_B, f"scope-conc-{n}")
         assert restored is not None
         return text, restored.json()["restored_text"]

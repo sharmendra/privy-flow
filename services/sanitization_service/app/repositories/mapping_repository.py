@@ -12,6 +12,7 @@ from typing import Any, Protocol
 
 from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.dml import ReturningUpdate
 
 from app.models.mapping_record import MappingRecord
 
@@ -107,23 +108,32 @@ class MappingRepository:
 
     def revoke(self, digest: bytes, tenant_id: str, now: datetime) -> bool:
         """Mark the record revoked. True when an unrevoked record of this tenant was found."""
-        return self._mark("revoked_at", digest, tenant_id, now)
-
-    def mark_deleted(self, digest: bytes, tenant_id: str, now: datetime) -> bool:
-        """Soft-delete for retention. True when an undeleted record of this tenant was found."""
-        return self._mark("deleted_at", digest, tenant_id, now)
-
-    def _mark(self, column_name: str, digest: bytes, tenant_id: str, now: datetime) -> bool:
-        column = getattr(MappingRecord, column_name)
         statement = (
             update(MappingRecord)
             .where(
                 MappingRecord.credential_digest == digest,
                 MappingRecord.tenant_id == tenant_id,
-                column.is_(None),
+                MappingRecord.revoked_at.is_(None),
             )
-            .values({column_name: now})
+            .values(revoked_at=now)
             .returning(MappingRecord.id)
         )
+        return self._run_update(statement)
+
+    def mark_deleted(self, digest: bytes, tenant_id: str, now: datetime) -> bool:
+        """Soft-delete for retention. True when an undeleted record of this tenant was found."""
+        statement = (
+            update(MappingRecord)
+            .where(
+                MappingRecord.credential_digest == digest,
+                MappingRecord.tenant_id == tenant_id,
+                MappingRecord.deleted_at.is_(None),
+            )
+            .values(deleted_at=now)
+            .returning(MappingRecord.id)
+        )
+        return self._run_update(statement)
+
+    def _run_update(self, statement: ReturningUpdate[uuid.UUID]) -> bool:
         with Session(self._engine) as session, session.begin():
             return session.execute(statement).first() is not None

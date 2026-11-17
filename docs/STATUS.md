@@ -376,6 +376,23 @@ Decisions and limits to know about:
 - The De-sanitization Service performs no rate limiting (not in the pilot) and no replay protection beyond reuse within the lifetime (D5).
 - Not run: the two real services together, and any test against PostgreSQL (phase 8).
 
+### Code cleanup (branch `phase-cleanup`)
+
+Recorded 2026-11-17, Windows. Behavior-preserving simplification, no API, schema or migration change.
+
+- `restoration/restorer.py`: the nested closure and the value-size cache are replaced by one small helper. Same limit behavior.
+- `api/sanitizations.py`: `_sanitize_and_store` split into `_vault`, `_store_mappings` and a shorter `_sanitize_and_store`.
+- `repositories/mapping_repository.py`: `revoke` and `mark_deleted` use named columns instead of `getattr` on a column name. The compiled PostgreSQL SQL was compared with the old form and is identical.
+- `vault/vault.py`: the repeated digest call is one private method. `sanitization/policy.py`: a `# fmt: skip` comprehension is a plain loop.
+- `tests/e2e/test_pilot_e2e.py`: one over-long line wrapped (the only Ruff error at the start).
+
+| Command | Result |
+|---|---|
+| `uv run ruff check .`, `uv run ruff format --check .`, `uv run pyright` | Passed; 0 errors, 0 warnings |
+| `uv run scripts/run_tests.py all` (no database) | 843 passed, 16 failed, 4 skipped, 93 errors; identical to the run before the changes. The failures and errors are the database tests (no Docker, `PRIVYFLOW_TEST_DATABASE_URL` not set). |
+
+Not verified: the repository change against a real PostgreSQL. `test_mapping_repository.py` covers it and did not run this session.
+
 ## 5. Validation checklist
 
 - [ ] Inspect the repository and remove or archive obsolete extraction-service scaffolding only after review.

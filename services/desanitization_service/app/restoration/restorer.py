@@ -33,6 +33,14 @@ def _size(text: str) -> int:
     return len(text.encode("utf-8", "surrogatepass"))
 
 
+def _grow(size: int, piece: str, max_output_bytes: int) -> int:
+    """The output size after adding `piece`. Stops as soon as the limit is passed."""
+    size += _size(piece)
+    if size > max_output_bytes:
+        raise OutputTooLargeError
+    return size
+
+
 def restore(
     sanitized: str, mappings: Mapping[str, str], max_output_bytes: int
 ) -> RestorationResult:
@@ -41,29 +49,25 @@ def restore(
     position = 0
     restored = 0
     unmatched = 0
-    value_sizes: dict[str, int] = {}
-
-    def add(piece: str, piece_size: int) -> None:
-        nonlocal size
-        size += piece_size
-        if size > max_output_bytes:
-            raise OutputTooLargeError
-        parts.append(piece)
 
     for match in PLACEHOLDER_SHAPE.finditer(sanitized):
-        literal = sanitized[position : match.start()]
-        add(literal, _size(literal))
+        text_before = sanitized[position : match.start()]
+        size = _grow(size, text_before, max_output_bytes)
+        parts.append(text_before)
+
         token = match.group(0)
         value = mappings.get(token)
         if value is None:
             unmatched += 1
-            add(token, len(token))
+            replacement = token
         else:
             restored += 1
-            if value not in value_sizes:
-                value_sizes[value] = _size(value)
-            add(value, value_sizes[value])
+            replacement = value
+        size = _grow(size, replacement, max_output_bytes)
+        parts.append(replacement)
         position = match.end()
+
     tail = sanitized[position:]
-    add(tail, _size(tail))
+    _grow(size, tail, max_output_bytes)
+    parts.append(tail)
     return RestorationResult("".join(parts), restored, unmatched)

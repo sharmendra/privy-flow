@@ -5,6 +5,7 @@ Sanitization is not idempotent: every call that stores mappings creates a new re
 """
 
 import logging
+from collections.abc import Mapping
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, Response
@@ -26,7 +27,7 @@ from app.schemas.sanitization import (
     SanitizationResponse,
 )
 from app.settings.snapshot import SettingsSnapshot
-from app.vault.vault import Vault
+from app.vault.vault import StoredMapping, Vault
 
 router = APIRouter(prefix="/api/v1")
 
@@ -55,46 +56,64 @@ async def _parse_request(request: Request) -> SanitizationRequest:
         raise ApiError(422, "validation_error", "The request is not valid.") from None
 
 
+def _vault(request: Request) -> Vault:
+    vault: Vault | None = getattr(request.app.state, "vault", None)
+    if vault is None:
+        raise _not_ready()
+    return vault
+
+
+def _store_mappings(
+    request: Request, tenant_id: str, scope_id: str, mappings: Mapping[str, str]
+) -> StoredMapping:
+    """Encrypt and store the mappings. A database failure becomes a safe 503."""
+    snapshot: SettingsSnapshot | None = getattr(request.app.state, "settings_snapshot", None)
+    if snapshot is None:
+        raise _not_ready()
+    policy = _resolver(request).policy_for(tenant_id)
+    profiles = {
+        "profiles": [{"id": i, "version": v} for i, v in policy.profiles],
+        "settings_version": snapshot.version,
+        "settings_hash": snapshot.content_hash,
+    }
+    try:
+        return _vault(request).store(
+            tenant_id=tenant_id,
+            request_scope_id=scope_id,
+            mappings=mappings,
+            profiles=profiles,
+            ttl_seconds=policy.max_ttl_seconds,
+        )
+    except SQLAlchemyError as exc:
+        log_event(
+            "vault_unavailable",
+            logging.WARNING,
+            correlation_id=request.state.correlation_id,
+            error_category=type(exc).__name__,
+        )
+        raise ApiError(
+            503, "dependency_unavailable", "A required dependency is unavailable."
+        ) from None
+
+
 def _sanitize_and_store(
     request: Request, tenant_id: str, body: SanitizationRequest
 ) -> SanitizationResponse:
-    resolver = _resolver(request)
-    vault: Vault | None = getattr(request.app.state, "vault", None)
-    snapshot: SettingsSnapshot | None = getattr(request.app.state, "settings_snapshot", None)
-    if vault is None or snapshot is None:
-        raise _not_ready()
-    policy = resolver.policy_for(tenant_id)
+    policy = _resolver(request).policy_for(tenant_id)
     result = sanitize_text(body.text, policy)
     if len(result.mappings) > MAX_MAPPINGS:
         # More distinct values than the internal API can return for one reference. Refusing
         # here means nothing is stored that could not be restored.
         raise ApiError(413, "payload_too_large", "The text holds too many sensitive values.")
-    reference: str | None = None
+
+    reference = None
     expires_at = None
+    # Text with nothing reversible needs no database.
     if result.mappings:
-        try:
-            stored = vault.store(
-                tenant_id=tenant_id,
-                request_scope_id=body.request_scope_id,
-                mappings=result.mappings,
-                profiles={
-                    "profiles": [{"id": i, "version": v} for i, v in policy.profiles],
-                    "settings_version": snapshot.version,
-                    "settings_hash": snapshot.content_hash,
-                },
-                ttl_seconds=policy.max_ttl_seconds,
-            )
-        except SQLAlchemyError as exc:
-            log_event(
-                "vault_unavailable",
-                logging.WARNING,
-                correlation_id=request.state.correlation_id,
-                error_category=type(exc).__name__,
-            )
-            raise ApiError(
-                503, "dependency_unavailable", "A required dependency is unavailable."
-            ) from None
-        reference, expires_at = stored.reference, stored.expires_at
+        stored = _store_mappings(request, tenant_id, body.request_scope_id, result.mappings)
+        reference = stored.reference
+        expires_at = stored.expires_at
+
     return SanitizationResponse(
         sanitized_text=result.sanitized_text,
         restore_reference=reference,

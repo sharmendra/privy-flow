@@ -64,7 +64,7 @@ class Vault:
                 id=record_id,
                 tenant_id=tenant_id,
                 request_scope_id=request_scope_id,
-                credential_digest=credential_digest(reference, self._pepper),
+                credential_digest=self._digest(reference),
                 ciphertext=sealed.ciphertext,
                 nonce=sealed.nonce,
                 encryption_alg=sealed.algorithm,
@@ -87,7 +87,7 @@ class Vault:
         """
         if not is_valid_reference(reference):
             return None
-        digest = credential_digest(reference, self._pepper)
+        digest = self._digest(reference)
         record = self._store.find_active(digest, tenant_id, request_scope_id, self._clock())
         if record is None:
             return None
@@ -103,15 +103,16 @@ class Vault:
         """Revoke a reference of the tenant. False when none was found."""
         if not is_valid_reference(reference):
             return False
-        digest = credential_digest(reference, self._pepper)
-        return self._store.revoke(digest, tenant_id, self._clock())
+        return self._store.revoke(self._digest(reference), tenant_id, self._clock())
 
     def mark_deleted(self, reference: str, tenant_id: str) -> bool:
         """Mark the record deleted for retention. False when none was found."""
         if not is_valid_reference(reference):
             return False
-        digest = credential_digest(reference, self._pepper)
-        return self._store.mark_deleted(digest, tenant_id, self._clock())
+        return self._store.mark_deleted(self._digest(reference), tenant_id, self._clock())
+
+    def _digest(self, reference: str) -> bytes:
+        return credential_digest(reference, self._pepper)
 
 
 def _parse_payload(plaintext: bytes) -> dict[str, str]:
