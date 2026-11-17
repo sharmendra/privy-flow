@@ -3,15 +3,9 @@
 import pytest
 
 PENDING = [
-    "caller authentication",
-    "caller authorization for restoration",
-    "restore-reference format validation",
-    "restoration replaces only exact placeholders from the mapping",
-    "unknown and altered placeholders are left untouched",
     "expired reference is rejected",
     "revoked reference is rejected",
     "cross-tenant restoration is rejected",
-    "restoration is exact for supported input",
 ]
 
 

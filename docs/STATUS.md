@@ -36,7 +36,7 @@ The project documentation defines the target architecture and requirements. Do n
 |---|---|
 | Product and service boundaries | Defined |
 | Sanitization API | `POST /api/v1/sanitizations` and `GET /api/v1/policies` implemented and executed, pilot phase 5 (see section 4) |
-| De-sanitization API | To be implemented / verified |
+| De-sanitization API | `POST /api/v1/desanitizations` implemented and executed against a stub of the Sanitization internal API, pilot phase 7 (see section 4); not yet run against the real service |
 | Sensitive entity detection | Six pilot recognizers implemented and executed, pilot phase 3 (see section 4); no PERSON, Aadhaar, address or date detection |
 | Policy engine | Profile loader, effective-policy resolver and overlap rule implemented and executed, pilot phase 3; not yet used by an API |
 | Placeholder generation and span replacement | Implemented and executed, pilot phase 4 (see section 4); pure logic, not yet used by an API |
@@ -46,7 +46,7 @@ The project documentation defines the target architecture and requirements. Do n
 | Authenticated internal mapping API | Implemented and executed against an in-memory store, pilot phase 6 (see section 4); not yet run against PostgreSQL |
 | Authorization and tenant isolation | Public API key authentication and tenant scoping implemented and executed for the Sanitization API, phase 5. Internal API and De-sanitization side planned |
 | Expiry and revocation | Implemented in the vault and repository and executed, phase 5; no public revoke endpoint |
-| Restoration logic | Planned |
+| Restoration logic | Implemented and executed (property tests), pilot phase 7 |
 | Settings store (file and database backends, validation, audit, CLI) | Implemented and executed, pilot phase 2A (see section 4) |
 | Service foundations (both apps, health, correlation IDs, redacted logging, error body, vault table migration) | Implemented and executed, pilot phase 2 (see section 4) |
 | Test harness foundation | Implemented and executed (see section 4) |
@@ -60,7 +60,7 @@ Update each row only after inspecting code and running the relevant tests.
 
 ## 4. What is built and how to run it
 
-The repository contains documentation, the test harness, and the pilot phase 2 service foundations: two FastAPI apps with health endpoints, correlation IDs, allowlist logging and the standard error body, plus the Sanitization `mapping_records` migration. Phase 3 added detection (six regex and checksum recognizers), the profile loader, the effective-policy resolver and the span planner. Phase 4 added placeholder generation and span replacement, the sanitization request schema and the request size limit. Phase 5 added the encrypted vault, API-key authentication and the public sanitization and policy endpoints. The internal mapping endpoint exists from phase 6; there is no restoration yet.
+The repository contains documentation, the test harness, and the pilot phase 2 service foundations: two FastAPI apps with health endpoints, correlation IDs, allowlist logging and the standard error body, plus the Sanitization `mapping_records` migration. Phase 3 added detection (six regex and checksum recognizers), the profile loader, the effective-policy resolver and the span planner. Phase 4 added placeholder generation and span replacement, the sanitization request schema and the request size limit. Phase 5 added the encrypted vault, API-key authentication and the public sanitization and policy endpoints. The internal mapping endpoint exists from phase 6 and restoration from phase 7. The two services have not yet run together (phase 8).
 
 Run locally (PowerShell or macOS; values stay in git-ignored files):
 
@@ -124,7 +124,8 @@ Not verified:
 | 4. Placeholder sanitization | Implemented 2026-11-17; all five criteria met (see "Phase 4 evidence"). |
 | 5. Secure mapping vault | Implemented 2026-11-17; all twelve criteria met (see "Phase 5 evidence"). |
 | 6. Internal mapping API | Implemented 2026-11-17; all six criteria met (see "Phase 6 evidence"). |
-| 7 to 8 | Not started |
+| 7. De-sanitization | Implemented 2026-11-17; all eight criteria met against a stub (see "Phase 7 evidence"). |
+| 8. End-to-end run and close-out | Not started |
 
 Phase 1 delivered (documentation and data only, no service code, no test changes):
 
@@ -343,6 +344,37 @@ Decisions and limits to know about:
 - The service secret must differ from every client API key; the service is not ready otherwise.
 - Pilot trust model unchanged: the shared secret (D3) and tenant assertion by the internal caller (D8) are not production grade.
 - Not run: the internal API against PostgreSQL (the row-level tamper test is in phase 8).
+
+### Phase 7 evidence (De-sanitization)
+
+Recorded 2026-11-17, Windows, Python 3.13.13. No PostgreSQL this session (Docker off, `PRIVYFLOW_TEST_DATABASE_URL` not set, no password read from a `.env`). The Sanitization Service is stubbed at its HTTP boundary, so nothing in phase 7 needs a database.
+
+| Command | Result |
+|---|---|
+| `uv run pytest tests/unit/test_restorer.py tests/unit/test_desan_auth_and_config.py tests/integration/test_desanitization_api.py tests/integration/test_internal_client.py tests/security/test_desanitization_security.py` | 125 passed |
+| `uv run scripts/run_tests.py unit` | 536 passed, 0 failed, 4 skipped; coverage gate FAILED at 74% (minimum 80%), see below |
+| `uv run scripts/run_tests.py security` | 29 passed, 0 failed, 9 skipped |
+| `uv run scripts/run_tests.py evaluation` | 24 passed, 0 failed, 0 skipped |
+| `uv run scripts/run_tests.py all` (no database) | 836 passed, 16 failed, 24 skipped, 70 errors, 1 warning; coverage 96.26% (minimum 80%). The 16 failures and 70 errors are the database tests (Docker error); none is in phase 6 or 7 code. |
+| `uv run scripts/run_tests.py lint`, `uv run pyright` | Passed; 0 errors, 0 warnings |
+| Mutation spot checks (by hand, then reverted) | Retry bound raised from 2 to 5 (3 tests failed); tenant replaced by a constant on the internal call (3); restored text scanned a second time (2); reference format check removed (1). Each made tests fail. |
+
+The unit-only coverage gate (the open item from phase 2) is now at 74%, down from 80%, because the new De-sanitization endpoint and client are tested through the API in `tests/integration/`, as for the Sanitization Service, and unit tests cannot reach them. Coverage over `all` is 96.26%. I did not change the gate. The owner decision from phase 2 is still needed: enforce the gate on `all` only, or on `all` and `integration`.
+
+New code in `services/desanitization_service/app/`: `api/desanitizations.py`, `clients/sanitization.py`, `restoration/restorer.py`, `schemas/desanitization.py`, `schemas/internal_api.py`, `core/auth.py`, `core/size_limit.py`; edited `main.py`, `api/health.py`, `core/config.py`, `core/errors.py`, `core/logging.py`. No database, no migration, no import from the Sanitization package. `httpx` moved to a runtime dependency.
+
+New tests: `tests/unit/test_restorer.py` (33, with two Hypothesis properties), `test_desan_auth_and_config.py`; `tests/integration/test_desanitization_api.py` (35), `test_internal_client.py` (19); `tests/security/test_desanitization_security.py` (8). Support: `tests/support/sanitization_stub.py`, `desan_api.py`, `desan_env.py`. Ten pending placeholders were replaced by real tests (six unit, two security, two integration). Expired, revoked and cross-tenant restoration, the general log and error-body leakage sweep, tenant isolation, and the "invalid, expired and revoked" API entry stay pending for phase 8, because the stub only imitates the real lookup. Existing tests changed: the default De-sanitization test environment now holds the two new secrets, and the allowed log-key set in `test_service_foundations.py` gained the four audit fields. No test was deleted, skipped or weakened.
+
+Decisions and limits to know about:
+
+- Action needed on the existing local setup: the De-sanitization Service now needs `PRIVYFLOW_DESAN_API_KEYS` and `PRIVYFLOW_DESAN_SERVICE_SECRET`, or it stays alive but not ready. `uv run scripts/gen_local_secrets.py --add-missing-secrets` adds them, copying the service secret from the Sanitization `.env` so the two match. I did not touch your files.
+- "Counted" in the phase 7 criterion: SPEC 9.6 counts only tokens that have the placeholder shape and are not in the mapping. Malformed look-alikes (`[email_001]`, `[EMAIL_01]`, `[EMAIL_001`) are left untouched but not counted, because counting every bracketed word would make the number meaningless. A repeated known placeholder is restored every time (needed for the round trip), so "duplicated" is tested as repeated unknown tokens and altered tokens such as `[EMAIL_001_001]`. Say so if you want a wider count.
+- An exact placeholder inside other brackets (`[[EMAIL_001]]`) is restored, since the original text held those brackets. A `[TYPE_REDACTED]` marker is never touched.
+- Audit: one log line per success with an opaque tenant reference (a SHA-256 prefix), counts and the correlation ID. The tenant reference is my choice; the plan only says audit metadata goes to redacted logs.
+- Retries cover connection errors, connect timeouts and 503 only. A read timeout is not retried even though the call only reads; SPEC 9.6 says connection errors and 503. A 401 from the Sanitization Service (the two secrets differ) is reported to callers as 503, so a caller learns nothing about the misconfiguration; operators see the `UpstreamStatus401` category in the log.
+- The client has no cap on the size of the Sanitization response. The response is bounded by 10000 mappings and the text that produced them, which Sanitization limits.
+- The De-sanitization Service performs no rate limiting (not in the pilot) and no replay protection beyond reuse within the lifetime (D5).
+- Not run: the two real services together, and any test against PostgreSQL (phase 8).
 
 ## 5. Validation checklist
 

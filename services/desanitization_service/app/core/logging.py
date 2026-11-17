@@ -22,6 +22,11 @@ ALLOWED_FIELDS = (
     "latency_ms",
     "outcome",
     "error_category",
+    # Audit metadata for a restoration: who (an opaque tenant reference) and how much.
+    "operation",
+    "tenant_ref",
+    "restored_count",
+    "unmatched_count",
 )
 
 logger = logging.getLogger(LOGGER_NAME)

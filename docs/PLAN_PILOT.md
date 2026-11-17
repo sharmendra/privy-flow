@@ -1,6 +1,6 @@
 # PLAN_PILOT.md
 
-Status: decisions D1 to D17 and questions Q1 to Q8 resolved on the recommended approach (owner instruction, 2026-11-17). Phase 1 (documentation) implemented 2026-11-17, with one criterion awaiting owner review. Phase 2 (service foundations) implemented 2026-11-17, with one criterion open (see below). Phase 2A (settings store) implemented 2026-11-17, with one criterion open (see below). Phase 3 (detection and policy) implemented 2026-11-17, with one criterion open (see below). Phase 4 (placeholder sanitization) implemented 2026-11-17, all criteria met (see the note under it). Phase 5 (secure mapping vault and public sanitization endpoint) implemented 2026-11-17, all criteria met (see "Phase 5 evidence" in `docs/STATUS.md`); the open phase 3 criterion was ticked in the same run. Phase 6 (internal mapping API) implemented 2026-11-17, all criteria met (see "Phase 6 evidence" in `docs/STATUS.md`). Phases 7 onward are not started.
+Status: decisions D1 to D17 and questions Q1 to Q8 resolved on the recommended approach (owner instruction, 2026-11-17). Phase 1 (documentation) implemented 2026-11-17, with one criterion awaiting owner review. Phase 2 (service foundations) implemented 2026-11-17, with one criterion open (see below). Phase 2A (settings store) implemented 2026-11-17, with one criterion open (see below). Phase 3 (detection and policy) implemented 2026-11-17, with one criterion open (see below). Phase 4 (placeholder sanitization) implemented 2026-11-17, all criteria met (see the note under it). Phase 5 (secure mapping vault and public sanitization endpoint) implemented 2026-11-17, all criteria met (see "Phase 5 evidence" in `docs/STATUS.md`); the open phase 3 criterion was ticked in the same run. Phase 6 (internal mapping API) implemented 2026-11-17, all criteria met (see "Phase 6 evidence" in `docs/STATUS.md`). Phase 7 (De-sanitization) implemented 2026-11-17, all criteria met (see "Phase 7 evidence" in `docs/STATUS.md`). Phase 8 is not started.
 
 ## Objective
 
@@ -345,14 +345,14 @@ Success criteria:
 What it builds: API-key authentication and tenant derivation, the internal HTTP client (timeout, bounded retry, safe error mapping), and single-pass exact-placeholder restoration. Why: it completes the loop. The tests stub the Sanitization Service at its HTTP boundary and a separate contract test checks the real schema, as `docs/CODE_STANDARDS.md` requires.
 
 Success criteria:
-- [ ] Authorized restoration succeeds against the stubbed internal API.
-- [ ] A valid restore-reference with no API key, or with a key for another tenant, is rejected (reference alone never authorizes).
-- [ ] Unknown, altered, duplicated, and malformed placeholders are left untouched and counted, in 100% of the parametrized cases.
-- [ ] Property test passes: restoring in-memory mappings reproduces the original text, and restored values containing placeholder-like text are not re-substituted.
-- [ ] Sanitization outage, timeout, and 503 produce a 503 with correlation ID and no sensitive content; retries are bounded (assert call count).
-- [ ] A contract test runs the stub's responses through the real internal API schema.
-- [ ] Output-size limit and input-size limit return 413.
-- [ ] Restored values never appear in captured logs or traces.
+- [x] Authorized restoration succeeds against the stubbed internal API. (`tests/integration/test_desanitization_api.py`; the stub is an `httpx.MockTransport` under the real client.)
+- [x] A valid restore-reference with no API key, or with a key for another tenant, is rejected (reference alone never authorizes). (Seven credential variants get 401 with zero calls to the stub; a key for another tenant gets the non-disclosing 404.)
+- [x] Unknown, altered, duplicated, and malformed placeholders are left untouched and counted, in 100% of the parametrized cases. (20 parametrized cases in `tests/unit/test_restorer.py`, all pass. "Counted" follows SPEC 9.6: unknown, altered and repeated-unknown tokens are counted; malformed look-alikes that do not have the placeholder shape are left untouched and not counted, and a repeated known placeholder is restored each time. See "Phase 7 evidence".)
+- [x] Property test passes: restoring in-memory mappings reproduces the original text, and restored values containing placeholder-like text are not re-substituted. (Hypothesis, 300 examples, values and literals that include placeholder-like text; plus fixed examples.)
+- [x] Sanitization outage, timeout, and 503 produce a 503 with correlation ID and no sensitive content; retries are bounded (assert call count). (Ten failure modes; 3 attempts for connection errors and 503, 1 for the rest, counted by the stub.)
+- [x] A contract test runs the stub's responses through the real internal API schema. (The stub's answers and the client's requests are validated against the saved contract file; the Sanitization side validates the real endpoint against the same file. Both services running together is phase 8.)
+- [x] Output-size limit and input-size limit return 413. (`payload_too_large` and `output_too_large`; exactly at each limit is accepted.)
+- [x] Restored values never appear in captured logs or traces. (Logs: `tests/security/test_desanitization_security.py`. Traces: not implemented, so not claimed.)
 
 ### Phase 8. End-to-end pilot run and close-out
 

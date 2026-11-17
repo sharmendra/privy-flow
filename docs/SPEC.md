@@ -250,6 +250,23 @@ Restoration is single pass, left to right, exact match only. Placeholders not in
 
 Internal client behavior: connect and read timeout from the `internal_client_timeout_seconds` setting (default 3), at most 2 retries, only for connection errors and 503. Sanitization unavailable or timed out returns 503 `dependency_unavailable`.
 
+Implemented in `app/api/desanitizations.py`, `app/clients/sanitization.py`, `app/restoration/restorer.py`, `app/core/auth.py`, `app/core/size_limit.py` and `app/core/config.py` (pilot phase 7).
+
+| Rule | Behavior |
+|---|---|
+| Authentication | `X-API-Key` only, from this service's own key list (`PRIVYFLOW_DESAN_API_KEYS`, never the Sanitization keys), compared in constant time, checked before the body is read. A restore-reference alone never authorizes anything: no valid key is a 401 and the Sanitization Service is not called. |
+| Tenant | The tenant of the key, passed on the internal call. A body that names a tenant is a 422. A key for another tenant gets the same 404 as an unknown reference. |
+| Reference format | A value that does not match `pf1_` plus 43 URL-safe characters (the whole string) is a 404 and the Sanitization Service is not called. |
+| Placeholder shape | `\[[A-Z][A-Z0-9_]*_[0-9]{3,}\]`. A token with this shape that is a key of the mapping is restored. A token with this shape that is not (unknown, or altered such as `[EMAIL_001_001]` or `[EMAIL_0001]`) is left as it is and counted in `unmatched_placeholder_count`. Text that does not have the shape (`[email_001]`, `[EMAIL_01]`, `[EMAIL_001`, `[EMAIL_REDACTED]`) is left as it is and not counted. |
+| Counts | `restored_count` counts replaced occurrences, so a repeated placeholder counts each time. `unmatched_placeholder_count` counts occurrences. |
+| One pass | Left to right, once. A restored value is never scanned again. An exact placeholder inside other brackets (`[[EMAIL_001]]`) is restored, because the original text held those brackets around the value. |
+| Output limit | Checked while the text is built, so a small input cannot make the service build a huge string. Bytes of UTF-8. A result of exactly `max_output_bytes` is accepted. |
+| Internal client | `X-Service-Secret` and the correlation ID on every call, no redirects, one timeout (`internal_client_timeout_seconds`) on each attempt. Retried at most twice, and only after a connection error, a connect timeout or a 503. A read timeout, any other status (including a 401 from the Sanitization Service) and an unreadable or inconsistent answer (not JSON, wrong shape, one placeholder with two values) are not retried and give 503 `dependency_unavailable`. A 404 gives 404. |
+| Audit | One `restoration_completed` log line per success with the correlation ID, `operation`, an opaque `tenant_ref` (first 12 hex characters of SHA-256 of the tenant ID), `restored_count` and `unmatched_count`. No text, values, reference or keys. |
+| Readiness | Ready once settings, the keys, the service secret and the client loaded. The Sanitization Service is not probed. |
+
+Settings (environment or the service `.env`): `PRIVYFLOW_DESAN_SANITIZATION_BASE_URL`, `PRIVYFLOW_DESAN_API_KEYS`, `PRIVYFLOW_DESAN_SERVICE_SECRET` (the same value as `PRIVYFLOW_SAN_SERVICE_SECRET`), and the optional `PRIVYFLOW_DESAN_MAX_REQUEST_BYTES` (default 262144, at least 1024), `PRIVYFLOW_DESAN_MAX_OUTPUT_BYTES` (default 1048576, at least 1024) and `PRIVYFLOW_DESAN_INTERNAL_CLIENT_TIMEOUT_SECONDS` (default 3, above 0 and at most 30). A missing or malformed value leaves the service alive but not ready.
+
 ### 9.7 Error body and codes
 
 ```json
@@ -263,7 +280,7 @@ Messages are fixed text. They never include input, values, references, keys, SQL
 | 401 | `unauthorized` | Missing or invalid API key or service secret |
 | 404 | `restore_reference_not_found` | Unknown, malformed, expired, revoked, deleted, cross-tenant, or cross-scope reference (D7). Same body and shape for every cause. |
 | 413 | `payload_too_large` | Request body over the size limit, or (sanitization) text with more than 10000 distinct sensitive values |
-| 413 | `output_too_large` | Restored text over the output limit |
+| 413 | `output_too_large` | Restored text over the output limit (De-sanitization) |
 | 422 | `validation_error` | Wrong type, missing or unknown field, empty text, bad identifier |
 | 422 | `unsupported_policy` | `policy_id` is not `effective` |
 | 500 | `internal_error` | Unexpected error; details only in redacted logs |

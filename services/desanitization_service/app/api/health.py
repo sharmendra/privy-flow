@@ -1,12 +1,7 @@
 """Liveness and readiness. Readiness checks configuration only; there is no database."""
 
-import logging
-
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
-
-from app.core.config import load_settings
-from app.core.logging import log_event
 
 router = APIRouter()
 
@@ -21,14 +16,12 @@ async def live() -> dict[str, str]:
 
 @router.get("/health/ready")
 async def ready(request: Request) -> JSONResponse:
-    try:
-        load_settings()
-    except Exception as exc:
-        log_event(
-            "readiness_failed",
-            logging.WARNING,
-            correlation_id=request.state.correlation_id,
-            error_category=type(exc).__name__,
-        )
-        return JSONResponse(_UNAVAILABLE, status_code=503)
-    return JSONResponse(_OK)
+    """Ready once settings, API keys, the service secret and the internal client loaded. The
+    Sanitization Service itself is not probed: its availability is reported per request."""
+    state = request.app.state
+    loaded = (
+        getattr(state, "settings", None) is not None
+        and getattr(state, "authenticator", None) is not None
+        and getattr(state, "sanitization_client", None) is not None
+    )
+    return JSONResponse(_OK if loaded else _UNAVAILABLE, status_code=200 if loaded else 503)

@@ -9,6 +9,9 @@ from typing import Any
 import httpx
 import pytest
 
+from tests.support.desan_api import DesanApi, install_stub
+from tests.support.desan_env import desanitization_env
+from tests.support.sanitization_stub import SanitizationStub
 from tests.support.service_loader import load_service_app
 from tests.support.settings_data import valid_content, write_settings_file
 from tests.support.vault_api import VaultApi, install_in_memory_vault
@@ -21,9 +24,7 @@ DEFAULT_SANITIZATION_ENV = {
     "PRIVYFLOW_SAN_DATABASE_URL": "postgresql+psycopg://nobody:nopass@127.0.0.1:1/none",
     **sanitization_secret_env(),
 }
-DEFAULT_DESANITIZATION_ENV = {
-    "PRIVYFLOW_DESAN_SANITIZATION_BASE_URL": "http://127.0.0.1:1",
-}
+DEFAULT_DESANITIZATION_ENV = desanitization_env()
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
@@ -141,4 +142,29 @@ def vault_api_factory(sanitization_app_factory: AppFactory, tmp_path: Path) -> V
 @pytest.fixture
 async def vault_api(vault_api_factory: VaultApiFactory) -> AsyncIterator[VaultApi]:
     async with vault_api_factory() as api:
+        yield api
+
+
+DesanApiFactory = Callable[..., AbstractAsyncContextManager[DesanApi]]
+
+
+@pytest.fixture
+def desan_api_factory(desanitization_app_factory: AppFactory) -> DesanApiFactory:
+    """Build the De-sanitization app over a stub of the Sanitization internal API. `env`
+    entries override the default environment, for example `PRIVYFLOW_DESAN_MAX_OUTPUT_BYTES`."""
+
+    @asynccontextmanager
+    async def build(env: dict[str, str | None] | None = None) -> AsyncGenerator[DesanApi]:
+        app = desanitization_app_factory(env)
+        async with client_for(app) as client:
+            stub = SanitizationStub()
+            await install_stub(app, stub)
+            yield DesanApi(app, client, stub)
+
+    return build
+
+
+@pytest.fixture
+async def desan_api(desan_api_factory: DesanApiFactory) -> AsyncIterator[DesanApi]:
+    async with desan_api_factory() as api:
         yield api

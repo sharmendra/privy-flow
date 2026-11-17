@@ -5,7 +5,6 @@ import pytest
 PENDING = [
     "tenant isolation: tenant A cannot read or restore tenant B mappings",
     "authentication and authorization on every sensitive endpoint",
-    "possession of a restore-reference alone never authorizes restoration",
     "expiry and revocation are enforced",
     "replay protection where one-time use applies",
     "rate limiting",
@@ -13,7 +12,6 @@ PENDING = [
     "no sensitive values in logs",
     "no sensitive values in error responses",
     "no sensitive values in traces and metrics",
-    "unauthorized callers cannot learn whether a mapping exists",
 ]
 
 

@@ -28,6 +28,10 @@ ALLOWED_LOG_KEYS = {
     "settings_backend",
     "settings_version",
     "settings_hash",
+    "operation",
+    "tenant_ref",
+    "restored_count",
+    "unmatched_count",
 }
 SQL_CANARY = "SELECT secret FROM vault WHERE value = 'x'"
 GENERATED_ID = re.compile(r"^[A-Za-z0-9._-]{8,64}$")
