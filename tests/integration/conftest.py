@@ -1,23 +1,53 @@
-"""Fixtures for integration tests that need a real PostgreSQL (requires Docker)."""
+"""Fixtures for tests that need a real PostgreSQL.
 
+The admin database comes from PRIVYFLOW_TEST_DATABASE_URL when it is set (an explicit
+opt-in to a local PostgreSQL), otherwise from a Testcontainers PostgreSQL, which needs
+Docker. If neither is available the test fails with the reason. It is never skipped, so a
+missing database cannot look like a pass.
+"""
+
+import os
 from collections.abc import Iterator
 
 import pytest
 
+from tests.support.database import create_database, drop_database
+
+ADMIN_URL_ENV = "PRIVYFLOW_TEST_DATABASE_URL"
+
 
 @pytest.fixture(scope="session")
-def postgres_url() -> Iterator[str]:
-    """Throwaway PostgreSQL container for tests that need a database."""
+def database_admin_url() -> Iterator[str]:
+    """SQLAlchemy URL of a role that can create databases."""
+    configured = os.environ.get(ADMIN_URL_ENV)
+    if configured:
+        yield configured
+        return
     try:
         from testcontainers.postgres import PostgresContainer
     except ImportError:
-        pytest.skip("testcontainers not installed: run `uv sync --group integration`")
+        pytest.fail(f"No test database: set {ADMIN_URL_ENV} or run `uv sync --group integration`")
+    container = PostgresContainer("postgres:16-alpine")
     try:
-        container = PostgresContainer("postgres:16-alpine")
         container.start()
-    except Exception as exc:  # Docker unavailable or image pull failed
-        pytest.skip(f"PostgreSQL container could not start: {exc}")
+    except Exception as exc:
+        pytest.fail(f"No test database: set {ADMIN_URL_ENV} or start Docker ({type(exc).__name__})")
     try:
-        yield container.get_connection_url()
+        host = container.get_container_host_ip()
+        port = container.get_exposed_port(5432)
+        yield (
+            f"postgresql+psycopg://{container.username}:{container.password}"
+            f"@{host}:{port}/{container.dbname}"
+        )
     finally:
         container.stop()
+
+
+@pytest.fixture
+def empty_database_url(database_admin_url: str) -> Iterator[str]:
+    """A new empty database for one test, dropped afterwards."""
+    url = create_database(database_admin_url)
+    try:
+        yield url
+    finally:
+        drop_database(database_admin_url, url)

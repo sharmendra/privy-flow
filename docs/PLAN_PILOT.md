@@ -1,6 +1,6 @@
 # PLAN_PILOT.md
 
-Status: decisions D1 to D17 and questions Q1 to Q8 resolved on the recommended approach (owner instruction, 2026-11-17). Phase 1 (documentation) implemented 2026-11-17, with one criterion awaiting owner review. Phases 2 onward are not started. No service code has been written.
+Status: decisions D1 to D17 and questions Q1 to Q8 resolved on the recommended approach (owner instruction, 2026-11-17). Phase 1 (documentation) implemented 2026-11-17, with one criterion awaiting owner review. Phase 2 (service foundations) implemented 2026-11-17, with one criterion open (see below). Phases 2A onward are not started.
 
 ## Objective
 
@@ -251,14 +251,14 @@ What it builds: two runnable apps with configuration, health, correlation IDs, r
 - `pyproject.toml` additions with a one-line justification for each dependency.
 
 Success criteria:
-- [ ] `uv run scripts/run_tests.py unit` and `integration` pass with the health tests for both services now running (not skipped).
-- [ ] Both services start as separate processes on different ports; `GET /health/live` returns 200 on each.
-- [ ] `/health/ready` returns 200 with the database up and 503 with it down for the Sanitization Service; the De-sanitization Service reports readiness based on config only and does not report on the vault database.
-- [ ] Migration test passes from an empty PostgreSQL database via Testcontainers, and `alembic downgrade base` then `upgrade head` round-trips.
-- [ ] A test proves the De-sanitization settings contain no database URL and its environment loading fails or ignores a Sanitization database URL if one is supplied.
-- [ ] Log-redaction baseline test passes: a canary in a request body and header never appears in captured logs.
-- [ ] Error-shape test passes: unhandled exceptions return the standard 500 body with no trace or SQL.
-- [ ] Docker daemon status is checked first. If it is not running, this phase stops and reports it rather than skipping the database tests (see Risks).
+- [ ] `uv run scripts/run_tests.py unit` and `integration` pass with the health tests for both services now running (not skipped). (Open: `integration` passes, 44 passed, and the health tests run. `unit` has 10 passed but exits non-zero because the 80% coverage gate applies to `unit` alone and unit tests cannot cover `services/` by themselves. Awaiting owner decision; the gate was not changed.)
+- [x] Both services start as separate processes on different ports; `GET /health/live` returns 200 on each. (`tests/integration/test_process_startup.py`; also run by hand on ports 8001 and 8002.)
+- [x] `/health/ready` returns 200 with the database up and 503 with it down for the Sanitization Service; the De-sanitization Service reports readiness based on config only and does not report on the vault database. (`tests/integration/test_service_health.py`, including recovery after the database returns.)
+- [x] Migration test passes from an empty PostgreSQL database via Testcontainers, and `alembic downgrade base` then `upgrade head` round-trips. (Run against local PostgreSQL 18.6 under the owner-approved fallback because Docker was not running; the Testcontainers path has not run. Also checks the migration matches the ORM model and the runtime role's least privilege.)
+- [x] A test proves the De-sanitization settings contain no database URL and its environment loading fails or ignores a Sanitization database URL if one is supplied. (`tests/security/test_database_boundary.py`: settings fields, environment and env file ignored, no database or Sanitization imports in the source.)
+- [x] Log-redaction baseline test passes: a canary in a request body and header never appears in captured logs. (Also query string; a real-process test checks the uvicorn output.)
+- [x] Error-shape test passes: unhandled exceptions return the standard 500 body with no trace or SQL.
+- [x] Docker daemon status is checked first. If it is not running, this phase stops and reports it rather than skipping the database tests (see Risks). (Docker was not running; reported; the owner approved the local PostgreSQL fallback on 2026-11-17. Database tests fail, never skip, when no database is available.)
 
 ### Phase 2A. Settings store
 

@@ -9,7 +9,7 @@ uv sync                                   # core tooling
 uv sync --all-groups                      # plus Testcontainers, Locust, Bandit, pip-audit
 
 uv run scripts/run_tests.py unit
-uv run scripts/run_tests.py integration   # PostgreSQL tests need Docker running
+uv run scripts/run_tests.py integration   # PostgreSQL tests need Docker, or PRIVYFLOW_TEST_DATABASE_URL
 uv run scripts/run_tests.py security
 uv run scripts/run_tests.py evaluation
 uv run scripts/run_tests.py e2e
@@ -30,6 +30,14 @@ Reports are written to `reports/`.
 | `fixtures/eval/` | Synthetic detection dataset and approval thresholds. |
 | `support/` | Service loader, leak assertions, evaluation metrics. |
 | `conftest.py` | Shared fixtures: service clients, tenant IDs. |
+
+## Database for integration tests
+
+Database tests use Testcontainers when Docker is running. Without Docker, set `PRIVYFLOW_TEST_DATABASE_URL` in your shell to the admin URL of a local PostgreSQL (not in a file). Each test creates and drops its own `pf_test_*` database. If neither is available the tests fail with the reason; they do not skip.
+
+```text
+$env:PRIVYFLOW_TEST_DATABASE_URL = "postgresql+psycopg://USER:PASSWORD@localhost:5432/privyflow"   # PowerShell
+```
 
 ## Pending tests
 

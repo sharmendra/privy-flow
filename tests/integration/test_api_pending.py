@@ -10,9 +10,6 @@ PENDING = [
     "Internal mapping API: scope, expiry and revocation are enforced",
     "De-sanitization API: valid restoration returns original text",
     "De-sanitization API: invalid, expired and revoked references fail safely",
-    "Database: migrations apply from an empty database",
-    "Database: constraints and indexes for tenant, scope and expiry lookups",
-    "Database: De-sanitization Service holds no Sanitization database credentials",
     "Contract: internal API schema compatibility between the two services",
 ]
 

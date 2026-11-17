@@ -258,6 +258,8 @@ Messages are fixed text. They never include input, values, references, keys, SQL
 | 500 | `internal_error` | Unexpected error; details only in redacted logs |
 | 503 | `dependency_unavailable` | Database unavailable, or Sanitization unavailable or timed out |
 
+Unknown routes return 404 `not_found` and wrong methods 405 `method_not_allowed` in the same body shape.
+
 Health endpoints return `{ "status": "ok" }` (200) or `{ "status": "unavailable" }` (503), with no detail.
 
 ### 9.8 Idempotency and retries
