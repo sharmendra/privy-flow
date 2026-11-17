@@ -14,6 +14,69 @@ Each step says what to run and what you should see. If a result differs, stop an
 
 Detection is limited to six recognizers (EMAIL, PHONE, FINANCIAL, IN_PAN, IP_ADDRESS, US_SSN). Names such as "Alice" are not detected, and that is expected.
 
+## Choose how to run it
+
+Do Part 1 (setup) first, whichever way you choose. Then pick one:
+
+| Option | Best for | Covers |
+|---|---|---|
+| A. Script file | One command, a pass or fail line for each check | Parts 2 to 7 |
+| B. Postman | Clicking through requests and seeing each response | Parts 2 to 7 |
+| C. PowerShell by hand | Learning each step, copying single commands | Parts 2 to 9 |
+
+Parts 8 (logs and database) and 9 (service down) are always done by hand, because they need you to look at the service windows, the database, or stop a process. Part 10 is the automated test suites.
+
+### Option A. Run the script file
+
+After Part 1 (services running in windows A and B), open a third window in the repository root:
+
+```powershell
+uv run scripts/manual_test.py
+```
+
+The script reads the keys and the service secret from the two `.env` files itself, so you paste nothing and nothing secret is printed. If your services run on other ports, add `--san-url http://127.0.0.1:PORT` and `--desan-url http://127.0.0.1:PORT`.
+
+Expected: one `PASS` line for each check, ending with `N passed, 0 failed`, and exit code 0 (`echo $LASTEXITCODE` shows it). A `FAIL` line names the check and the HTTP status received.
+
+Other results:
+
+- `Cannot connect`: the services are not running (step 1.4). Exit code 2.
+- `... is not set`: run `uv run scripts/gen_local_secrets.py --add-missing-secrets` (step 1.2). Exit code 2.
+
+You can run it as often as you like. Each run uses new request scopes.
+
+### Option B. Run in Postman
+
+Two files are in `docs\postman\`:
+
+- `PrivyFlow.postman_collection.json`: 36 requests in six folders (Health, Sanitization, Restoration, Refusals, Tenant policies, Internal API). Each request has checks that show green or red in the Test Results tab.
+- `PrivyFlow.postman_environment.json`: the URLs and five empty secret values.
+
+Steps:
+
+1. In Postman choose Import and select both files.
+2. Open Environments, select `PrivyFlow local`, and fill in the five empty values from the `.env` files (open them with `notepad services\sanitization_service\.env` and `notepad services\desanitization_service\.env`):
+
+   | Environment value | Where it comes from |
+   |---|---|
+   | `san_key_a` | `PRIVYFLOW_SAN_API_KEYS` in the Sanitization `.env`, the value for `tenant-demo-a` |
+   | `san_key_b` | the same line, the value for `tenant-demo-b` |
+   | `desan_key_a` | `PRIVYFLOW_DESAN_API_KEYS` in the De-sanitization `.env`, the value for `tenant-demo-a` |
+   | `desan_key_b` | the same line, the value for `tenant-demo-b` |
+   | `service_secret` | `PRIVYFLOW_DESAN_SERVICE_SECRET` in the De-sanitization `.env` |
+
+   Copy only the value, without the quotes. Save the environment, then pick `PrivyFlow local` in the environment menu at the top right.
+3. Run everything: right-click the collection, choose Run collection, keep the order, and select Run. All requests should pass. Order matters: the second request in `2. Sanitization` saves the restore reference that later folders use.
+4. Or run one request at a time. Run `2. Sanitization` > `Sanitize the sample text` first, then any other request.
+
+Expected: every test is green. The `Oversized body` request sends 300000 characters, so it can take a moment.
+
+Keep the filled-in environment private: do not export it or share it, because it holds your keys.
+
+### Option C. PowerShell by hand
+
+Use the steps in Parts 2 to 9 below, including the helper in step 1.5.
+
 ## Part 1. Setup (once)
 
 ### Step 1.1. Install
@@ -71,6 +134,8 @@ uv run uvicorn app.main:app --app-dir services/desanitization_service --port 800
 Expected in each window: a `settings_loaded` log line and "Application startup complete". If you see `settings_load_failed`, a secret in that service's `.env` is missing or malformed.
 
 ### Step 1.5. Load the keys and a helper into your test window
+
+Only for Option C (by hand). Options A and B do not need this step.
 
 In your main window, paste this whole block. It reads the keys from the `.env` files into variables without printing them.
 
@@ -405,6 +470,8 @@ These tests create and drop their own `pf_test_*` databases and do not touch you
 - Rate limiting: not built in the pilot.
 
 ## Results sheet
+
+With Option A or B, the script or Postman result covers Parts 2 to 7. Parts 8 and 9 are always by hand.
 
 | Step | Expected | Pass or fail | Notes |
 |---|---|---|---|
