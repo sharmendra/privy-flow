@@ -1,6 +1,6 @@
 # PLAN_PILOT.md
 
-Status: decisions D1 to D17 and questions Q1 to Q8 resolved on the recommended approach (owner instruction, 2026-11-17). Phase 1 (documentation) implemented 2026-11-17, with one criterion awaiting owner review. Phase 2 (service foundations) implemented 2026-11-17, with one criterion open (see below). Phase 2A (settings store) implemented 2026-11-17, with one criterion open (see below). Phase 3 (detection and policy) implemented 2026-11-17, with one criterion open (see below). Phase 4 (placeholder sanitization) implemented 2026-11-17, all criteria met (see the note under it). Phase 5 (secure mapping vault and public sanitization endpoint) implemented 2026-11-17, all criteria met (see "Phase 5 evidence" in `docs/STATUS.md`); the open phase 3 criterion was ticked in the same run. Phases 6 onward are not started.
+Status: decisions D1 to D17 and questions Q1 to Q8 resolved on the recommended approach (owner instruction, 2026-11-17). Phase 1 (documentation) implemented 2026-11-17, with one criterion awaiting owner review. Phase 2 (service foundations) implemented 2026-11-17, with one criterion open (see below). Phase 2A (settings store) implemented 2026-11-17, with one criterion open (see below). Phase 3 (detection and policy) implemented 2026-11-17, with one criterion open (see below). Phase 4 (placeholder sanitization) implemented 2026-11-17, all criteria met (see the note under it). Phase 5 (secure mapping vault and public sanitization endpoint) implemented 2026-11-17, all criteria met (see "Phase 5 evidence" in `docs/STATUS.md`); the open phase 3 criterion was ticked in the same run. Phase 6 (internal mapping API) implemented 2026-11-17, all criteria met (see "Phase 6 evidence" in `docs/STATUS.md`). Phases 7 onward are not started.
 
 ## Objective
 
@@ -333,12 +333,12 @@ Success criteria:
 What it builds: `POST /internal/v1/mappings/retrieve` with service-secret authentication, scope checks, non-disclosing errors, and a bounded response. Why: this is the only door between the two services, so it is built and tested alone before the client side exists.
 
 Success criteria:
-- [ ] Requests without the service secret, or with a client API key instead, get 401.
-- [ ] Wrong tenant, wrong request scope, unknown, expired, and revoked references all return the identical 404 body and comparable status and shape.
-- [ ] The response contains only placeholders, values, and policy ID; a test fails if extra fields appear.
-- [ ] Decrypted values never appear in captured logs or error bodies (canary test).
-- [ ] The internal contract is saved as a schema file in the Sanitization service tests, and a compatibility test checks it.
-- [ ] The public sanitization API key cannot call any `/internal` route, and the service secret cannot call any `/api/v1` route.
+- [x] Requests without the service secret, or with a client API key instead, get 401. (`tests/integration/test_internal_api.py`, six header variants.)
+- [x] Wrong tenant, wrong request scope, unknown, expired, and revoked references all return the identical 404 body and comparable status and shape. (Also deleted, malformed and tampered; one test compares status, headers and body across all eight causes.)
+- [x] The response contains only placeholders, values, and policy ID; a test fails if extra fields appear. (Exact key sets, and the response model forbids extras.)
+- [x] Decrypted values never appear in captured logs or error bodies (canary test). (`tests/security/test_internal_security.py`.)
+- [x] The internal contract is saved as a schema file in the Sanitization service tests, and a compatibility test checks it. (`tests/fixtures/contracts/internal_mappings_retrieve_v1.json`; real responses are validated against it with `jsonschema`.)
+- [x] The public sanitization API key cannot call any `/internal` route, and the service secret cannot call any `/api/v1` route. (Tests enumerate the app's routes, so a new route is covered automatically.)
 
 ### Phase 7. De-sanitization
 

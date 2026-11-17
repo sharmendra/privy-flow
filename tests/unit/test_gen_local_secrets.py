@@ -9,9 +9,11 @@ from dotenv import dotenv_values
 
 from scripts.gen_local_secrets import (
     DESAN_ENV,
+    DESAN_SECRET_NAMES,
     SAN_ENV,
     SETTINGS_FILE,
     VAULT_SECRET_NAMES,
+    add_missing_desanitization_secrets,
     add_missing_vault_secrets,
     generate,
 )
@@ -143,3 +145,49 @@ def test_add_missing_secrets_twice_changes_nothing_the_second_time(tmp_path: Pat
     after_first = san.read_text(encoding="utf-8")
     assert add_missing_vault_secrets(tmp_path) == []
     assert san.read_text(encoding="utf-8") == after_first
+
+
+def _desan_values(root: Path) -> dict[str, str | None]:
+    return dotenv_values(root / DESAN_ENV)
+
+
+def test_both_services_get_the_same_service_secret_and_different_client_keys(
+    tmp_path: Path,
+) -> None:
+    generate(tmp_path, admin_url=ADMIN_URL)
+    san, desan = _san_values(tmp_path), _desan_values(tmp_path)
+    assert all(desan[name] for name in DESAN_SECRET_NAMES)
+    assert san["PRIVYFLOW_SAN_SERVICE_SECRET"] == desan["PRIVYFLOW_DESAN_SERVICE_SECRET"]
+    san_keys = set(json.loads(san["PRIVYFLOW_SAN_API_KEYS"] or "{}").values())
+    desan_keys = set(json.loads(desan["PRIVYFLOW_DESAN_API_KEYS"] or "{}").values())
+    assert desan_keys
+    assert not san_keys & desan_keys
+    assert san["PRIVYFLOW_SAN_SERVICE_SECRET"] not in san_keys | desan_keys
+
+
+def test_add_missing_desanitization_secrets_copies_the_existing_service_secret(
+    tmp_path: Path,
+) -> None:
+    san = tmp_path / SAN_ENV
+    san.parent.mkdir(parents=True)
+    san.write_text(f"PRIVYFLOW_SAN_SERVICE_SECRET={'s' * 40}\n", encoding="utf-8")
+    desan = tmp_path / DESAN_ENV
+    desan.parent.mkdir(parents=True)
+    desan.write_text("PRIVYFLOW_DESAN_SANITIZATION_BASE_URL=http://x\n", encoding="utf-8")
+    assert add_missing_desanitization_secrets(tmp_path) == list(DESAN_SECRET_NAMES)
+    values = _desan_values(tmp_path)
+    assert values["PRIVYFLOW_DESAN_SERVICE_SECRET"] == "s" * 40
+    assert values["PRIVYFLOW_DESAN_SANITIZATION_BASE_URL"] == "http://x"
+    assert add_missing_desanitization_secrets(tmp_path) == []
+
+
+def test_add_missing_desanitization_secrets_creates_the_shared_secret_when_neither_has_one(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / SAN_ENV).parent.mkdir(parents=True)
+    (tmp_path / SAN_ENV).write_text("PRIVYFLOW_SAN_DATABASE_URL=x\n", encoding="utf-8")
+    add_missing_desanitization_secrets(tmp_path)
+    assert (
+        _san_values(tmp_path)["PRIVYFLOW_SAN_SERVICE_SECRET"]
+        == _desan_values(tmp_path)["PRIVYFLOW_DESAN_SERVICE_SECRET"]
+    )

@@ -43,7 +43,7 @@ The project documentation defines the target architecture and requirements. Do n
 | Request size limit (413) and sanitization request schema | Implemented and executed for the Sanitization Service, pilot phase 4, through a test-only route; the public endpoint is phase 5. De-sanitization side is phase 7 |
 | Encrypted mapping vault | Implemented and executed against PostgreSQL, pilot phase 5 |
 | Credential hashing and lookup | Implemented and executed, pilot phase 5 (HMAC digest, unique index) |
-| Authenticated internal mapping API | Planned |
+| Authenticated internal mapping API | Implemented and executed against an in-memory store, pilot phase 6 (see section 4); not yet run against PostgreSQL |
 | Authorization and tenant isolation | Public API key authentication and tenant scoping implemented and executed for the Sanitization API, phase 5. Internal API and De-sanitization side planned |
 | Expiry and revocation | Implemented in the vault and repository and executed, phase 5; no public revoke endpoint |
 | Restoration logic | Planned |
@@ -60,7 +60,7 @@ Update each row only after inspecting code and running the relevant tests.
 
 ## 4. What is built and how to run it
 
-The repository contains documentation, the test harness, and the pilot phase 2 service foundations: two FastAPI apps with health endpoints, correlation IDs, allowlist logging and the standard error body, plus the Sanitization `mapping_records` migration. Phase 3 added detection (six regex and checksum recognizers), the profile loader, the effective-policy resolver and the span planner. Phase 4 added placeholder generation and span replacement, the sanitization request schema and the request size limit. Phase 5 added the encrypted vault, API-key authentication and the public sanitization and policy endpoints. There is no internal mapping endpoint or restoration yet.
+The repository contains documentation, the test harness, and the pilot phase 2 service foundations: two FastAPI apps with health endpoints, correlation IDs, allowlist logging and the standard error body, plus the Sanitization `mapping_records` migration. Phase 3 added detection (six regex and checksum recognizers), the profile loader, the effective-policy resolver and the span planner. Phase 4 added placeholder generation and span replacement, the sanitization request schema and the request size limit. Phase 5 added the encrypted vault, API-key authentication and the public sanitization and policy endpoints. The internal mapping endpoint exists from phase 6; there is no restoration yet.
 
 Run locally (PowerShell or macOS; values stay in git-ignored files):
 
@@ -123,7 +123,8 @@ Not verified:
 | 3. Detection and policy | Implemented 2026-11-17; one criterion open: the file-versus-database policy comparison test is written but has not run (see "Phase 3 evidence"). |
 | 4. Placeholder sanitization | Implemented 2026-11-17; all five criteria met (see "Phase 4 evidence"). |
 | 5. Secure mapping vault | Implemented 2026-11-17; all twelve criteria met (see "Phase 5 evidence"). |
-| 6 to 8 | Not started |
+| 6. Internal mapping API | Implemented 2026-11-17; all six criteria met (see "Phase 6 evidence"). |
+| 7 to 8 | Not started |
 
 Phase 1 delivered (documentation and data only, no service code, no test changes):
 
@@ -315,6 +316,33 @@ Decisions and limits to know about:
 - Random 96-bit nonces are safe at pilot volume (limit about 2^32 rows per key). Key rotation tooling and re-encryption of old rows are not built.
 - Not built: the internal retrieval endpoint (phase 6), the restorer (phase 7), rate limiting, and an audit store.
 - Still open: the coverage gate on `unit` alone (phase 2), and the CLI check on macOS (phase 2A).
+
+### Phase 6 evidence (internal mapping API)
+
+Recorded 2026-11-17, Windows, Python 3.13.13. No PostgreSQL this session: Docker was off and `PRIVYFLOW_TEST_DATABASE_URL` was not set. I did not read a password from `services/sanitization_service/.env` for it, since the owner has to grant that. The internal API tests run the real app, authentication, vault and cryptography over the in-memory store used in phase 5, so none of them needs a database.
+
+| Command | Result |
+|---|---|
+| `uv run pytest tests/integration/test_internal_api.py tests/security/test_internal_security.py` | 45 passed |
+| `uv run scripts/run_tests.py unit` | 474 passed, 0 failed, 10 skipped; coverage 80% (minimum 80%) |
+| `uv run scripts/run_tests.py security` | 21 passed, 0 failed, 12 skipped |
+| `uv run pytest tests/integration` (no database) | 193 passed, 16 failed, 5 skipped, 70 errors. The 16 failures and 70 errors are the database tests (the same Docker error as phases 3 and 4); none is in phase 6 code. |
+| `uv run ruff check .`, `uv run ruff format --check .`, `uv run pyright` | Passed; 0 errors, 0 warnings |
+| Mutation spot checks (by hand, then reverted) | Router authentication dependency removed (11 tests failed); integrity error re-raised instead of mapped to the 404 (3 failed). Each made tests fail. |
+
+New code: `app/api/internal.py`, `app/schemas/internal.py`, `app/core/service_auth.py`; edited `app/main.py`, `app/core/config.py`, `app/api/sanitizations.py`. New secret: `PRIVYFLOW_SAN_SERVICE_SECRET`. New dev dependency: `jsonschema` (checks real responses against the saved contract). New runtime dependency: `httpx` moved to runtime (phase 7 needs it in the De-sanitization Service). No migration.
+
+New tests: `tests/integration/test_internal_api.py`, `tests/security/test_internal_security.py`, support in `tests/support/contracts.py`, `routes.py`, and `vault_api.py`; the contract is `tests/fixtures/contracts/internal_mappings_retrieve_v1.json`. Three pending placeholders (two internal API integration entries and "internal API authentication") were replaced by the real tests above; none was deleted without a replacement, skipped or weakened.
+
+Decisions and limits to know about:
+
+- Action needed on the existing local setup: the Sanitization Service now needs `PRIVYFLOW_SAN_SERVICE_SECRET` or it stays alive but not ready. Run `uv run scripts/gen_local_secrets.py --add-missing-secrets`. It appends the secret to `services/sanitization_service/.env` and the matching secret and a separate client key list to `services/desanitization_service/.env`. I did not touch your files.
+- Sanitization now refuses text with more than 10000 distinct sensitive values (413 `payload_too_large`) and stores nothing. SPEC 9.5 already said a response holds at most 10000 mappings; without this limit a stored reference could exist that the internal API could not return. This is a behavior change to the public endpoint, so please confirm the number.
+- A stored row that fails authentication (tampered ciphertext, nonce, key version or an unknown key version) returns the same 404 as a miss and is logged by category only. That settles the open question from phase 5.
+- A malformed `tenant_id` or `request_scope_id` is a 422, not a 404. Only the caller that holds the service secret can see that difference, and it reveals nothing about stored data.
+- The service secret must differ from every client API key; the service is not ready otherwise.
+- Pilot trust model unchanged: the shared secret (D3) and tenant assertion by the internal caller (D8) are not production grade.
+- Not run: the internal API against PostgreSQL (the row-level tamper test is in phase 8).
 
 ## 5. Validation checklist
 

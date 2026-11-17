@@ -221,6 +221,17 @@ Response 200 (no other fields are allowed):
 
 The response holds at most 10000 mappings. The lookup requires the credential digest, tenant, and request scope to all match, and the record to be unexpired, unrevoked, and undeleted. Version compatibility: the path carries the version (`v1`); breaking changes get a new path.
 
+Implemented in `app/api/internal.py`, `app/schemas/internal.py` and `app/core/service_auth.py` (pilot phase 6). The saved contract is `tests/fixtures/contracts/internal_mappings_retrieve_v1.json`; both services' tests check against it.
+
+| Rule | Behavior |
+|---|---|
+| Authentication | `X-Service-Secret` only, compared in constant time and checked before the body is read. A client API key, in any header, gets 401. The service secret gets 401 on every `/api/v1` route. The secret must be at least 32 printable ASCII characters with no space and must differ from every client API key, otherwise the service is not ready. |
+| Request | `restore_reference` is any string. `tenant_id` and `request_scope_id` must match the patterns in 9.2 (422 otherwise). Unknown fields are rejected (422). The size limit of 9.2 applies. |
+| Not found | A malformed, unknown, expired, revoked, deleted, wrong-tenant, wrong-scope or tampered reference all return the same 404 `restore_reference_not_found` with the fixed message "The restore reference was not found." A row that fails authentication is also logged once, by category only (`mapping_integrity_failure`), so operators can see it; the caller cannot. |
+| Response | Only `mappings` and `policy_id` (always `effective`). `Cache-Control: no-store`. Reuse within the lifetime is allowed (D5). |
+| Bound | At most 10000 distinct mappings per reference. The public sanitization endpoint refuses text that would need more with 413 `payload_too_large` and stores nothing, so every stored reference can be returned in full. |
+| Database failure | 503 `dependency_unavailable`, no detail. |
+
 ### 9.6 De-sanitization: `POST /api/v1/desanitizations`
 
 Request:
@@ -251,7 +262,7 @@ Messages are fixed text. They never include input, values, references, keys, SQL
 |---|---|---|
 | 401 | `unauthorized` | Missing or invalid API key or service secret |
 | 404 | `restore_reference_not_found` | Unknown, malformed, expired, revoked, deleted, cross-tenant, or cross-scope reference (D7). Same body and shape for every cause. |
-| 413 | `payload_too_large` | Request body over the size limit |
+| 413 | `payload_too_large` | Request body over the size limit, or (sanitization) text with more than 10000 distinct sensitive values |
 | 413 | `output_too_large` | Restored text over the output limit |
 | 422 | `validation_error` | Wrong type, missing or unknown field, empty text, bad identifier |
 | 422 | `unsupported_policy` | `policy_id` is not `effective` |
@@ -380,6 +391,7 @@ Secrets come from the environment only, and a missing or malformed one leaves th
 | `PRIVYFLOW_SAN_ENCRYPTION_KEYS` | JSON object of key version to base64 AES-256 key |
 | `PRIVYFLOW_SAN_ACTIVE_KEY_VERSION` | Version used for new rows; must be in the keyring |
 | `PRIVYFLOW_SAN_CREDENTIAL_PEPPER` | Base64, at least 32 bytes |
+| `PRIVYFLOW_SAN_SERVICE_SECRET` | Secret for the internal API (9.5): printable ASCII, at least 32 characters, different from every API key |
 
 Public endpoint behavior beyond 9.3 and 9.4: the API key is read from `X-API-Key` only and compared in constant time against every configured key. Authentication runs before the body is parsed, so an unauthenticated caller gets 401 and learns nothing about the schema (a body over the size limit is refused earlier, by the size limit, with 413). A database failure while storing returns 503 `dependency_unavailable`; text with no reversible entity needs no database. Responses carry `Cache-Control: no-store`. Keys, pepper and the service secret are pilot mechanisms (D2 to D4).
 

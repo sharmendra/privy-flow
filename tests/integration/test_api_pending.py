@@ -3,8 +3,6 @@
 import pytest
 
 PENDING = [
-    "Internal mapping API: only the De-sanitization Service identity is accepted",
-    "Internal mapping API: scope, expiry and revocation are enforced",
     "De-sanitization API: valid restoration returns original text",
     "De-sanitization API: invalid, expired and revoked references fail safely",
     "Contract: internal API schema compatibility between the two services",

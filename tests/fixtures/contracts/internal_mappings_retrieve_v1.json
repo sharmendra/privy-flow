@@ -1,0 +1,72 @@
+{
+  "contract": "POST /internal/v1/mappings/retrieve",
+  "version": "v1",
+  "note": "The saved contract between the two services (SPEC 9.5, 9.7). The Sanitization tests check the real endpoint against it and the De-sanitization tests check their stub and client against it. A change here is a change of API contract and needs owner approval.",
+  "headers": { "X-Service-Secret": "required", "X-Correlation-ID": "optional" },
+  "request": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["restore_reference", "tenant_id", "request_scope_id"],
+    "properties": {
+      "restore_reference": { "type": "string" },
+      "tenant_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{2,62}$" },
+      "request_scope_id": { "type": "string", "pattern": "^[A-Za-z0-9._:-]{1,128}$" }
+    }
+  },
+  "response_200": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["mappings", "policy_id"],
+    "properties": {
+      "mappings": {
+        "type": "array",
+        "maxItems": 10000,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["placeholder", "value"],
+          "properties": {
+            "placeholder": { "type": "string", "pattern": "^\\[[A-Z][A-Z0-9_]*_[0-9]{3,}\\]$" },
+            "value": { "type": "string" }
+          }
+        }
+      },
+      "policy_id": { "type": "string", "const": "effective" }
+    }
+  },
+  "error": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["error"],
+    "properties": {
+      "error": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message", "correlation_id"],
+        "properties": {
+          "code": { "type": "string" },
+          "message": { "type": "string" },
+          "correlation_id": { "type": "string" }
+        }
+      }
+    }
+  },
+  "errors": {
+    "401": "unauthorized",
+    "404": "restore_reference_not_found",
+    "413": "payload_too_large",
+    "422": "validation_error",
+    "503": "dependency_unavailable"
+  },
+  "examples": {
+    "request": {
+      "restore_reference": "pf1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "tenant_id": "tenant-example",
+      "request_scope_id": "scope-1"
+    },
+    "response_200": {
+      "mappings": [{ "placeholder": "[EMAIL_001]", "value": "user@example.com" }],
+      "policy_id": "effective"
+    }
+  }
+}

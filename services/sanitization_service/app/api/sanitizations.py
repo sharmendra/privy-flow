@@ -17,6 +17,7 @@ from app.core.errors import ApiError
 from app.core.logging import log_event
 from app.sanitization.policy import EffectivePolicy, PolicyResolver
 from app.sanitization.sanitizer import sanitize_text
+from app.schemas.internal import MAX_MAPPINGS
 from app.schemas.sanitization import (
     EntityRule,
     PolicyResponse,
@@ -64,6 +65,10 @@ def _sanitize_and_store(
         raise _not_ready()
     policy = resolver.policy_for(tenant_id)
     result = sanitize_text(body.text, policy)
+    if len(result.mappings) > MAX_MAPPINGS:
+        # More distinct values than the internal API can return for one reference. Refusing
+        # here means nothing is stored that could not be restored.
+        raise ApiError(413, "payload_too_large", "The text holds too many sensitive values.")
     reference: str | None = None
     expires_at = None
     if result.mappings:

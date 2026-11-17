@@ -8,6 +8,7 @@ dependencies = [
     "alembic>=1.20.1",  # schema migrations for the Sanitization vault database
     "cryptography>=46.0",  # AES-256-GCM authenticated encryption for the vault (Sanitization only)
     "fastapi>=0.163.1",  # HTTP framework for both services
+    "httpx>=0.27",  # internal HTTP client of the De-sanitization Service (also used by tests)
     "psycopg[binary]>=3.3.9",  # PostgreSQL driver (Sanitization Service only)
     "pydantic-settings>=2.16.3",  # typed settings from environment variables
     "sqlalchemy>=2.1.9",  # ORM and engine for the vault (Sanitization Service only)
@@ -25,6 +26,8 @@ dev = [
     "pytest-cov>=5.0",
     "httpx>=0.27",
     "hypothesis>=6.100",
+    "jsonschema>=4.23",  # validates API responses against the saved internal contract
+
     "ruff>=0.6",
     "pyright>=1.1.380",
 ]

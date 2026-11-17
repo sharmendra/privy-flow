@@ -9,7 +9,6 @@ PENDING = [
     "expiry and revocation are enforced",
     "replay protection where one-time use applies",
     "rate limiting",
-    "internal API authentication",
     "De-sanitization Service cannot reach the Sanitization database",
     "no sensitive values in logs",
     "no sensitive values in error responses",

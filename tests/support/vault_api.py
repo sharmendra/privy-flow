@@ -11,7 +11,7 @@ from typing import Any
 
 import httpx
 
-from tests.support.vault_env import API_KEYS, KEY_V1, PEPPER, TENANT_A
+from tests.support.vault_env import API_KEYS, KEY_V1, PEPPER, SERVICE_SECRET, TENANT_A
 from tests.support.vault_fakes import FakeClock, InMemoryMappingStore
 
 SCOPE = "scope-api-test"
@@ -28,6 +28,30 @@ class VaultApi:
     @staticmethod
     def headers(tenant: str = TENANT_A) -> dict[str, str]:
         return {"X-API-Key": API_KEYS[tenant], "Content-Type": "application/json"}
+
+    @staticmethod
+    def internal_headers() -> dict[str, str]:
+        return {"X-Service-Secret": SERVICE_SECRET, "Content-Type": "application/json"}
+
+    async def retrieve(
+        self,
+        reference: str,
+        tenant: str = TENANT_A,
+        scope: str = SCOPE,
+        headers: dict[str, str] | None = None,
+        **extra: Any,
+    ) -> httpx.Response:
+        body = {
+            "restore_reference": reference,
+            "tenant_id": tenant,
+            "request_scope_id": scope,
+            **extra,
+        }
+        return await self.client.post(
+            "/internal/v1/mappings/retrieve",
+            json=body,
+            headers=self.internal_headers() if headers is None else headers,
+        )
 
     async def sanitize(
         self,

@@ -12,6 +12,7 @@ TENANT_B = "tenant-test-b"
 TENANT_C = "tenant-test-c"  # has an API key but no entry in the test settings (default profile)
 
 API_KEYS: dict[str, str] = {t: secrets.token_urlsafe(32) for t in (TENANT_A, TENANT_B, TENANT_C)}
+SERVICE_SECRET = secrets.token_urlsafe(32)
 KEY_V1 = secrets.token_bytes(32)
 KEY_V2 = secrets.token_bytes(32)
 PEPPER = secrets.token_bytes(32)
@@ -31,4 +32,5 @@ def sanitization_secret_env(
         "PRIVYFLOW_SAN_ENCRYPTION_KEYS": json.dumps({str(v): b64(k) for v, k in held.items()}),
         "PRIVYFLOW_SAN_ACTIVE_KEY_VERSION": str(active_version),
         "PRIVYFLOW_SAN_CREDENTIAL_PEPPER": b64(PEPPER),
+        "PRIVYFLOW_SAN_SERVICE_SECRET": SERVICE_SECRET,
     }

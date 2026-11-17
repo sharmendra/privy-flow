@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     encryption_keys: SecretStr  # JSON object: key version to base64 AES-256 key
     active_key_version: int = Field(ge=1)
     credential_pepper: SecretStr  # base64, at least 32 bytes
+    # Shared with the De-sanitization Service for the internal API only (decision D3).
+    service_secret: SecretStr
 
     @field_validator("database_url")
     @classmethod
