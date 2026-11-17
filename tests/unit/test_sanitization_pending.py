@@ -8,8 +8,6 @@ import pytest
 
 PENDING = [
     "detection confidence scores (the pilot recognizers report none)",
-    "placeholder generation is collision resistant",
-    "repeated values map to one placeholder within a request",
     "restore-reference is high entropy and unpredictable",
     "restore-reference is stored only as a digest",
     "mapping encryption round trip with unique nonce",

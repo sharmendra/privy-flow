@@ -27,6 +27,7 @@ TENANT_ID_PATTERN = r"^[a-z0-9][a-z0-9_-]{2,62}$"
 MIN_TTL_SECONDS = 60
 MAX_TTL_SECONDS = 3600
 MIN_REQUEST_BYTES = 1024
+DEFAULT_MAX_REQUEST_BYTES = 262144
 _SECRET_NAME = re.compile(
     r"secret|passw|token|pepper|credential|private|api[_-]?key|encryption|signing|dsn"
     r"|database[_-]?url|connection|(^|[_-])keys?($|[_-])",
@@ -70,7 +71,7 @@ class SettingsContent(BaseModel):
     default_ttl_seconds: Annotated[StrictInt, Field(ge=MIN_TTL_SECONDS, le=MAX_TTL_SECONDS)] = (
         MAX_TTL_SECONDS
     )
-    max_request_bytes: Annotated[StrictInt, Field(ge=MIN_REQUEST_BYTES)] = 262144
+    max_request_bytes: Annotated[StrictInt, Field(ge=MIN_REQUEST_BYTES)] = DEFAULT_MAX_REQUEST_BYTES
     strict_coverage: StrictBool = False
 
 

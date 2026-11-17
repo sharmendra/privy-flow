@@ -42,8 +42,8 @@ Tick each box only after verifying it with tests, commands, or API calls, and re
 - [ ] Acceptance thresholds are approved by the product owner and set in `thresholds.json`.
 
 ### Phase 3. Placeholder sanitization
-- [ ] Unit and API tests prove expected transformations and safe edge-case behavior.
-- [ ] Property tests pass for collision avoidance, repeated values, and text preservation.
+- [ ] Unit and API tests prove expected transformations and safe edge-case behavior. (Partly met by pilot phase 4: unit tests and a test-only-route check of empty, whitespace-only and oversized input pass. The public sanitization endpoint is pilot phase 5, so API tests stay open.)
+- [x] Property tests pass for collision avoidance, repeated values, and text preservation. (Pilot phase 4, 2026-11-17: `tests/unit/test_placeholders.py`.)
 
 ### Phase 4. Secure mapping vault
 - [ ] Cryptographic and database security tests pass.

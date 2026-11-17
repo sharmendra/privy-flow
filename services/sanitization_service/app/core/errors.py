@@ -6,7 +6,8 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 CORRELATION_HEADER = "X-Correlation-ID"
-_HTTP_CODES = {404: "not_found", 405: "method_not_allowed"}
+_HTTP_CODES = {404: "not_found", 405: "method_not_allowed", 413: "payload_too_large"}
+_PAYLOAD_TOO_LARGE = "The request body is too large."
 
 
 def error_response(status_code: int, code: str, message: str, correlation_id: str) -> JSONResponse:
@@ -19,6 +20,10 @@ def error_response(status_code: int, code: str, message: str, correlation_id: st
 
 def internal_error(correlation_id: str) -> JSONResponse:
     return error_response(500, "internal_error", "An internal error occurred.", correlation_id)
+
+
+def payload_too_large(correlation_id: str) -> JSONResponse:
+    return error_response(413, "payload_too_large", _PAYLOAD_TOO_LARGE, correlation_id)
 
 
 def _correlation_id(request: Request) -> str:
@@ -34,7 +39,7 @@ async def _validation_error(request: Request, _: Exception) -> JSONResponse:
 async def _http_error(request: Request, exc: Exception) -> JSONResponse:
     status_code = exc.status_code if isinstance(exc, StarletteHTTPException) else 500
     code = _HTTP_CODES.get(status_code, "http_error")
-    message = "The request could not be completed."
+    message = _PAYLOAD_TOO_LARGE if status_code == 413 else "The request could not be completed."
     return error_response(status_code, code, message, _correlation_id(request))
 
 

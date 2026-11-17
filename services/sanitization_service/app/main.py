@@ -12,6 +12,7 @@ from app.core.config import SERVICE_NAME, SERVICE_VERSION, load_settings
 from app.core.errors import register_error_handlers
 from app.core.logging import configure_logging, log_event
 from app.core.middleware import RequestContextMiddleware
+from app.core.size_limit import RequestSizeLimitMiddleware
 from app.db.session import get_engine
 from app.sanitization.policy import PolicyResolver
 from app.settings.selector import load_snapshot
@@ -55,6 +56,9 @@ def create_app() -> FastAPI:
         openapi_url=None,
         lifespan=_lifespan,
     )
+    # The last middleware added is the outermost. Request context must wrap the size limit,
+    # so a 413 still gets a correlation ID and a log line.
+    app.add_middleware(RequestSizeLimitMiddleware)
     app.add_middleware(RequestContextMiddleware)
     register_error_handlers(app)
     app.include_router(health.router)

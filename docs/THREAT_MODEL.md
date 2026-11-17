@@ -35,7 +35,7 @@ The "Proving test" column names the planned test and the phase that builds it. T
 | Log reader: can read logs and error bodies | Recover original text, values, references, or keys | Field-allowlist structured logging. No bodies, headers, or exception messages. Standard 500 body without trace or SQL. Canary values are checked in logs and responses of both services. | `tests/security/test_log_redaction.py`, `test_leakage_*.py` (phases 2, 6, 7, 8) |
 | Settings writer: can change settings (insider or admin role holder) | Weaken protection by removing a profile or raising a TTL | Separate admin role, append-only audit, restart-only activation, startup validation. Not fully mitigated: whoever can write settings can weaken protection. Production needs change control. | `tests/integration/test_settings_roles.py`, `test_settings_audit.py` (phase 2A) |
 | Compromised De-sanitization Service or leaked service secret | Retrieve mappings of any tenant | Residual risk (D8). The caller must still hold a valid reference and scope for that tenant. The route is separate from the public API, and the client API key cannot call it. | `tests/security/test_internal_auth.py` (phase 6) |
-| Abusive client: oversized or malformed input | Exhaust memory or time | Request-size limits on both services, output limit on restoration, outbound timeout, bounded retries. Rate limiting is not in the pilot. | `tests/integration/test_limits.py` (phases 4, 7) |
+| Abusive client: oversized or malformed input | Exhaust memory or time | Request-size limits on both services, output limit on restoration, outbound timeout, bounded retries. Rate limiting is not in the pilot. | `tests/integration/test_sanitization_limits.py` and `tests/unit/test_size_limit.py` (Sanitization side, phase 4, executed); De-sanitization size, output and timeout tests (phase 7, pending) |
 
 ## 4. Specific controls and the property each gives
 
@@ -45,7 +45,7 @@ The "Proving test" column names the planned test and the phase that builds it. T
 | Settings reject secret-like fields | A settings file or dump holds no keys |
 | No backend fallback (D17) | Protection is never silently weaker than configured |
 | Single-pass restoration | A restored value that looks like a placeholder is not substituted again |
-| Placeholder counters skip literal input matches | Source text cannot be confused with a generated placeholder |
+| Placeholder counters skip literal input matches | Source text cannot be confused with a generated placeholder (`tests/unit/test_placeholders.py`, executed in phase 4) |
 
 ## 5. Residual risks
 

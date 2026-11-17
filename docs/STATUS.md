@@ -39,7 +39,8 @@ The project documentation defines the target architecture and requirements. Do n
 | De-sanitization API | To be implemented / verified |
 | Sensitive entity detection | Six pilot recognizers implemented and executed, pilot phase 3 (see section 4); no PERSON, Aadhaar, address or date detection |
 | Policy engine | Profile loader, effective-policy resolver and overlap rule implemented and executed, pilot phase 3; not yet used by an API |
-| Placeholder generation | Planned |
+| Placeholder generation and span replacement | Implemented and executed, pilot phase 4 (see section 4); pure logic, not yet used by an API |
+| Request size limit (413) and sanitization request schema | Implemented and executed for the Sanitization Service, pilot phase 4, through a test-only route; the public endpoint is phase 5. De-sanitization side is phase 7 |
 | Encrypted mapping vault | Planned |
 | Credential hashing and lookup | Planned |
 | Authenticated internal mapping API | Planned |
@@ -49,7 +50,7 @@ The project documentation defines the target architecture and requirements. Do n
 | Settings store (file and database backends, validation, audit, CLI) | Implemented and executed, pilot phase 2A (see section 4) |
 | Service foundations (both apps, health, correlation IDs, redacted logging, error body, vault table migration) | Implemented and executed, pilot phase 2 (see section 4) |
 | Test harness foundation | Implemented and executed (see section 4) |
-| Service-level tests (unit, integration, security, end-to-end) | Phase 2, 2A and 3 tests written; database-backed ones did not run in the last session (no Docker, no database URL). The rest are pending and skipped with a reason |
+| Service-level tests (unit, integration, security, end-to-end) | Phase 2, 2A, 3 and 4 tests written; database-backed ones did not run in the last two sessions (no Docker, no database URL). The rest are pending and skipped with a reason |
 | Detection evaluation dataset and metrics | Implemented and executed; pilot baseline recorded in phase 3 evidence; thresholds still unapproved (`null`) |
 | CI workflow | Written, not yet run (no remote) |
 | Performance (Locust) | Script written, not executed |
@@ -59,7 +60,7 @@ Update each row only after inspecting code and running the relevant tests.
 
 ## 4. What is built and how to run it
 
-The repository contains documentation, the test harness, and the pilot phase 2 service foundations: two FastAPI apps with health endpoints, correlation IDs, allowlist logging and the standard error body, plus the Sanitization `mapping_records` migration. Phase 3 added detection (six regex and checksum recognizers), the profile loader, the effective-policy resolver and the span planner. There is no placeholder substitution, vault logic, authentication or restoration yet.
+The repository contains documentation, the test harness, and the pilot phase 2 service foundations: two FastAPI apps with health endpoints, correlation IDs, allowlist logging and the standard error body, plus the Sanitization `mapping_records` migration. Phase 3 added detection (six regex and checksum recognizers), the profile loader, the effective-policy resolver and the span planner. Phase 4 added placeholder generation and span replacement, the sanitization request schema and the request size limit. There is no vault logic, authentication, public sanitization endpoint or restoration yet.
 
 Run locally (PowerShell or macOS; values stay in git-ignored files):
 
@@ -120,7 +121,8 @@ Not verified:
 | 2. Service foundations | Implemented 2026-11-17; one criterion open pending an owner decision on the coverage gate (see "Phase 2 evidence"). |
 | 2A. Settings store | Implemented 2026-11-17; one criterion open (macOS run of the CLI). |
 | 3. Detection and policy | Implemented 2026-11-17; one criterion open: the file-versus-database policy comparison test is written but has not run (see "Phase 3 evidence"). |
-| 4 to 8 | Not started |
+| 4. Placeholder sanitization | Implemented 2026-11-17; all five criteria met (see "Phase 4 evidence"). |
+| 5 to 8 | Not started |
 
 Phase 1 delivered (documentation and data only, no service code, no test changes):
 
@@ -165,7 +167,7 @@ Open items for the owner:
 - The coverage gate in `scripts/run_tests.py` applies to `unit` alone, but unit tests cannot reach 80% of `services/` by themselves (migrations and the database layer need a real database). `unit` therefore exits non-zero on coverage although its tests pass. I did not change the gate. Options: enforce coverage only on `all`, or on `all` and `integration`.
 - Unit tests of service internals (settings, log formatter, error body) do not exist yet; they were covered through the in-process API tests in `tests/integration/`.
 - The De-sanitization boundary is proven at settings and source level and by running the process with no database setting. A test that it cannot connect to the database over the network is not written.
-- Request-size limit and the 413 response are not built (phase 4).
+- Request-size limit and the 413 response are not built (phase 4). Update: built for the Sanitization Service in phase 4; the De-sanitization side is phase 7.
 - The default uvicorn access log prints query strings. Services must be started with `--no-access-log`; a test checks that a real process then logs no query string, header or body.
 - `gen_local_secrets.py` generates only the runtime database password. It grows with later phases.
 
@@ -243,6 +245,40 @@ Decisions and limits to know about:
 - Recognizers report no confidence. The "confidence" pending test stays pending.
 - Not built: placeholder text and replacement (phase 4), the policy endpoint, and API-key tenant resolution (phase 5).
 
+### Phase 4 evidence (placeholder sanitization)
+
+Recorded 2026-11-17, Windows, Python 3.13.13.
+
+Database-backed tests did not run again this session: Docker Desktop was not running and `PRIVYFLOW_TEST_DATABASE_URL` was not set. I did not look for or guess a database password. Their failures are the same 16 failures and 45 errors as in phase 3, all with the Docker error `CreateFile ... cannot find the file specified`. To check they are not caused by this phase, I stashed this phase's changes and ran `integration` on the phase 3 code: also 16 failed, 45 errors. The Testcontainers path has still never run, and the open phase 3 criterion (file versus database policy comparison) is still open.
+
+| Command | Result |
+|---|---|
+| `uv run scripts/run_tests.py unit` | 350 passed, 0 failed, 17 skipped; coverage 82.75% (minimum 80%) |
+| `uv run scripts/run_tests.py integration` | 86 passed, 16 failed, 8 skipped, 45 errors, 1 warning (the failures and errors are the database tests, above; the warning is a testcontainers deprecation notice that was already there); coverage gate met (84.37%) |
+| `uv run scripts/run_tests.py security` | 5 passed, 0 failed, 17 skipped |
+| `uv run scripts/run_tests.py evaluation` | 24 passed, 0 failed, 0 skipped (detection baseline unchanged) |
+| `uv run scripts/run_tests.py all` | 465 passed, 16 failed, 52 skipped, 45 errors, 1 warning; coverage 96.05% (minimum 80%) |
+| `uv run scripts/run_tests.py lint` | Ruff check and format check passed |
+| `uv run pyright` | 0 errors, 0 warnings |
+| `uv run scripts/run_tests.py scan` | `pip-audit`: no known vulnerabilities. Bandit on `services`: no findings. |
+| Mutation spot checks (by hand, then reverted) | Collision skip removed (10 tests failed); repeated-value sharing removed (4); redacted value written into the mappings (4); size limit changed from `>` to `>=` (4); streaming byte count removed (1); Content-Length check removed (1). Each made tests fail. |
+
+Skips went from 54 to 52 because two pending placeholders ("placeholder generation is collision resistant", "repeated values map to one placeholder within a request") were replaced by real tests. No test was deleted, skipped or weakened and no threshold changed.
+
+New tests (134 in four files, all executed and passing): `tests/unit/test_placeholders.py` (68, including five Hypothesis properties at 300 examples each: round trip, redact markers left exactly, no collision with literal placeholder-like text, one placeholder per distinct type and value, and round trip through real detection), `tests/unit/test_sanitization_request_schema.py` (32), `tests/unit/test_size_limit.py` (14, the middleware against a stub ASGI app), `tests/integration/test_sanitization_limits.py` (20, the schema, size limit and sanitizer together through a test-only route; no database needed). `tests/support/placeholders.py` holds a test-only reference restorer.
+
+Files changed: new `app/sanitization/placeholders.py`, `app/sanitization/sanitizer.py`, `app/schemas/sanitization.py`, `app/core/size_limit.py`; edited `app/core/errors.py` (413 code), `app/main.py` (middleware order), `app/settings/validator.py` (the 262144 default is now a named constant). No migration, no new dependency, no change to a public route.
+
+Decisions and limits to know about:
+
+- Placeholder rules are in `docs/SPEC.md` 9.12. Repeated values match on exact characters and entity type, so `A@example.com` and `a@example.com` get different placeholders. I chose exact matching because merging them would be a guess about what the caller considers the same value; say so if you want case-insensitive email matching.
+- The criterion "200 or 422, and 413" is proven through a test-only route, not the public endpoint, because that endpoint and its authentication are phase 5. Phase 5 needs its own API tests for these cases; the pending "Sanitization API: invalid, oversized and unsupported-policy input fail safely" test stays pending.
+- The size limit is measured on the raw request body in bytes, not on the `text` field. A body at the limit is accepted, so `text` can be somewhat shorter than the limit once the JSON around it is counted. SPEC 9.3 says "1 to the size limit" for the text; the body limit is the enforced one.
+- The size limit has no rate limiting and no time limit on a slow body. Slow-body and rate protection are not in the pilot.
+- A literal `[TYPE_REDACTED]` in the input stays as written and is never restored, so it is indistinguishable from a generated marker. Restoration never acts on markers, so this is harmless, but the text cannot tell you which markers the service wrote.
+- The mappings are held in memory only in this phase. Nothing is stored, so the encrypted vault, the restore-reference and expiry are phase 5.
+- Not built: the public sanitization endpoint, API-key authentication, the vault and the restorer.
+
 ## 5. Validation checklist
 
 - [ ] Inspect the repository and remove or archive obsolete extraction-service scaffolding only after review.
@@ -252,7 +288,7 @@ Decisions and limits to know about:
 - [x] Define and approve public and internal API contracts. Pilot contracts: `docs/SPEC.md` section 9, approved 2026-11-17.
 - [ ] Implement authentication and authorization boundaries.
 - [x] Implement recognizer and policy baseline. (Phase 3: six recognizers, overlap rule D6, six profiles, restrictiveness rules; one database-backed test has not run.)
-- [ ] Implement placeholder generation and collision handling.
+- [x] Implement placeholder generation and collision handling. (Pilot phase 4: `[TYPE_NNN]`, per-request consistency, collision skip, redact markers; property tests executed.)
 - [ ] Implement secure credential generation and hash lookup.
 - [ ] Implement authenticated encryption and key-version metadata.
 - [ ] Implement internal mapping retrieval with scope/expiry/revocation validation.

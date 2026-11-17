@@ -1,6 +1,6 @@
 # PLAN_PILOT.md
 
-Status: decisions D1 to D17 and questions Q1 to Q8 resolved on the recommended approach (owner instruction, 2026-11-17). Phase 1 (documentation) implemented 2026-11-17, with one criterion awaiting owner review. Phase 2 (service foundations) implemented 2026-11-17, with one criterion open (see below). Phase 2A (settings store) implemented 2026-11-17, with one criterion open (see below). Phase 3 (detection and policy) implemented 2026-11-17, with one criterion open (see below). Phases 4 onward are not started.
+Status: decisions D1 to D17 and questions Q1 to Q8 resolved on the recommended approach (owner instruction, 2026-11-17). Phase 1 (documentation) implemented 2026-11-17, with one criterion awaiting owner review. Phase 2 (service foundations) implemented 2026-11-17, with one criterion open (see below). Phase 2A (settings store) implemented 2026-11-17, with one criterion open (see below). Phase 3 (detection and policy) implemented 2026-11-17, with one criterion open (see below). Phase 4 (placeholder sanitization) implemented 2026-11-17, all criteria met (see the note under it). Phases 5 onward are not started.
 
 ## Objective
 
@@ -302,11 +302,13 @@ What it builds: placeholder generation (`[EMAIL_001]` style), per-request consis
 Collision rule: counters skip any index whose placeholder appears literally in the input.
 
 Success criteria:
-- [ ] Hypothesis property test passes: replacing spans and then restoring in memory returns the original text exactly.
-- [ ] Property test passes: no generated placeholder equals any placeholder-like substring already in the input.
-- [ ] Repeated identical values share one placeholder within a request; the same value in two requests is not linked.
-- [ ] Text outside spans is byte-identical, including non-ASCII text and line endings.
-- [ ] Empty input, whitespace-only input, and input at and above the size limit behave as documented (200 or 422, and 413).
+- [x] Hypothesis property test passes: replacing spans and then restoring in memory returns the original text exactly. (`tests/unit/test_placeholders.py`, 300 examples per property. Restoration here is a test-only reference in `tests/support/placeholders.py`; the real restorer is phase 7. A second property covers `redact`: restoring leaves exactly the redact markers.)
+- [x] Property test passes: no generated placeholder equals any placeholder-like substring already in the input. (`test_property_no_generated_placeholder_equals_placeholder_like_text_in_the_input`, with inputs that contain literal `[EMAIL_001]`, `[EMAIL_1000]`, `[EMAIL_0001]` and lowercase look-alikes, plus fixed examples.)
+- [x] Repeated identical values share one placeholder within a request; the same value in two requests is not linked. (Fixed examples and a property of one placeholder per distinct type and value. "Not linked" is tested as: numbering restarts for each request and a result never depends on earlier calls.)
+- [x] Text outside spans is byte-identical, including non-ASCII text and line endings. (13 parametrized gaps compared as UTF-8 bytes: CRLF, CR, LF then CR, doubled CRLF, accented and CJK text, an astral emoji, combining and zero-width characters, NUL and control characters.)
+- [x] Empty input, whitespace-only input, and input at and above the size limit behave as documented (200 or 422, and 413). (Empty text is 422, whitespace-only text is 200 and unchanged, a body of exactly the limit is 200, one byte over is 413, including chunked bodies and a lying Content-Length. These run through a test-only route that uses the real request schema, size-limit middleware and sanitizer, because the public endpoint is phase 5. The endpoint inherits the behavior; its own tests are a phase 5 criterion.)
+
+What phase 4 added beyond the placeholder logic, because the last criterion needs it: the request schema (`app/schemas/sanitization.py`) and the request size limit middleware (`app/core/size_limit.py`), which phase 2 left unbuilt. The 413 error code and the empty-text rule are in `docs/SPEC.md` 9.2, 9.3 and 9.12.
 
 ### Phase 5. Secure mapping vault
 

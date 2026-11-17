@@ -162,7 +162,7 @@ Revocation has no public endpoint in the pilot. It is a repository function with
 - Tenant is derived from the authenticated API key (public routes) and never read from the body. Each service has its own key list. API keys and the service secret are never accepted on each other's routes.
 - Identifier patterns: `request_scope_id` matches `^[A-Za-z0-9._:-]{1,128}$`. Tenant ID matches `^[a-z0-9][a-z0-9_-]{2,62}$`. `X-Correlation-ID` is accepted if it matches `^[A-Za-z0-9._-]{8,64}$`, otherwise a new ID is generated. The ID is returned in the `X-Correlation-ID` header and in every error body.
 - `restore_reference` format: `pf1_` followed by 43 URL-safe base64 characters (32 random bytes). A value that does not match this format is rejected with the same 404 as an unknown reference.
-- Request bodies are JSON. Unknown fields are rejected (422). Body size is limited by the `max_request_bytes` setting (default 262144, floor 1024); larger bodies return 413.
+- Request bodies are JSON. Unknown fields are rejected (422). Body size is limited by the `max_request_bytes` setting (default 262144, floor 1024); larger bodies return 413. The limit is counted in bytes of the raw body, so multi-byte characters count in full, and a body of exactly the limit is accepted. A declared `Content-Length` over the limit is refused before any of the body is read; a body with no declared length, or one that understates it, is counted as it arrives and refused once it goes over. If the settings did not load, the default applies. The Sanitization Service enforces this from pilot phase 4; the De-sanitization Service from phase 7.
 - All timestamps are UTC, ISO 8601.
 
 ### 9.3 Sanitization: `POST /api/v1/sanitizations`
@@ -189,7 +189,7 @@ Response 200:
 }
 ```
 
-`restore_reference` and `expires_at` are null when nothing reversible was stored (no entities, or every entity redacted). `entity_count` counts masked spans of both actions. Whitespace-only text is valid and returns unchanged with `entity_count` 0.
+`restore_reference` and `expires_at` are null when nothing reversible was stored (no entities, or every entity redacted). `entity_count` counts masked spans of both actions. Whitespace-only text is valid and returns unchanged with `entity_count` 0. Empty text (`""`) returns 422 `validation_error`. `request_scope_id` must match the pattern in 9.2, and a bad value is also 422.
 
 ### 9.4 Sanitization: `GET /api/v1/policies`
 
@@ -334,7 +334,28 @@ Overlap rule (D6), applied after detections are filtered to the entity types the
 4. A shorter span that overlaps a winner is dropped. Spans that only touch (one ends where the next starts) do not overlap.
 5. A winner takes `redact` if it, or any span it overlapped, is `redact`; otherwise `placeholder`. A dropped span that overlaps two winners counts toward both.
 
-The overlap rule and the policy merge are implemented in `app/detection/overlap.py`, `app/sanitization/policy.py` and `app/sanitization/spans.py`. Placeholder text and replacement belong to the next phase.
+The overlap rule and the policy merge are implemented in `app/detection/overlap.py`, `app/sanitization/policy.py` and `app/sanitization/spans.py`. Placeholder text and replacement are in 9.12.
+
+### 9.12 Placeholders and replacement (Sanitization Service)
+
+Implemented in `app/sanitization/placeholders.py` and `app/sanitization/sanitizer.py`. This is pure logic. It stores nothing and issues no restore-reference; the vault does that in phase 5.
+
+| Rule | Behavior |
+|---|---|
+| Reversible placeholder | `[TYPE_NNN]`, where `TYPE` is the entity type. `NNN` is zero padded to three digits and grows only past 999 (`[EMAIL_1000]`). |
+| Redacted marker | `[TYPE_REDACTED]`. No counter, so it shows nothing about repeated values. The value is never added to the mappings. |
+| Numbering | Per entity type, from 001, in order of first appearance in the text. Per request only: nothing carries over from one request to the next, so the same value in two requests is not linked. |
+| Repeated values | The same entity type and exactly the same characters share one placeholder within a request. Matching is exact: `A@example.com` and `a@example.com` get two placeholders. The same characters under two entity types get two placeholders. |
+| Collision rule | A number is skipped when its placeholder appears literally in the input (anywhere, including inside a masked value). So a generated placeholder never equals text the caller wrote. Text such as `[EMAIL_0001]`, `[email_001]` or `[EMAIL_1]` is not equal to any generated placeholder and does not cause a skip. |
+| Literal redact marker | A `[TYPE_REDACTED]` already in the input is left alone and is never restored, so it cannot be mistaken for a mapping. |
+| Preservation | Every character outside a masked span is kept exactly, including non-ASCII text, combining and zero-width characters, and `\r\n`, `\r` and `\n` line endings. Offsets are Python string (code point) offsets. |
+| Entity count | Masked spans of both actions. A repeated value counts once per occurrence. |
+| Whitespace-only and empty text | Returned unchanged with no mappings. Rejecting empty text is the request schema's job (9.3), not the sanitizer's. |
+| Span input | Spans must be in text order, non-empty, inside the text and not overlapping (touching is allowed). Anything else raises an error that names no text. This cannot happen with spans from the planner (9.11). |
+
+The result holds the sanitized text, the placeholder-to-value mappings and the entity count. The text and mappings are hidden from `repr`, so printing or logging a result by mistake shows no values.
+
+A placeholder cannot be formed by joining the input around a replacement, because a placeholder has no `[` or `]` inside it and every replacement starts with `[`. Restoration therefore only needs exact matching on the placeholder shape `\[[A-Z][A-Z0-9_]*_[0-9]{3,}\]`.
 
 ## 10. Acceptance criteria for the core engine
 
