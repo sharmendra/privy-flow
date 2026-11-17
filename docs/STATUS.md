@@ -432,3 +432,10 @@ For each completed task, record:
 - Known failures and follow-up tasks.
 
 Code generation alone is not evidence of completion.
+
+## Simplification refactor (2026-11-17)
+
+- `api/sanitizations.py`: one `_get` helper replaces three getattr helpers; verbose comments removed; lines within 100 characters.
+- `vault/vault.py`: the encrypted payload is a Pydantic `Payload` model; the hand-written `cast` and `isinstance` checks are gone. Writing still uses `json.dumps` and reading `json.loads`, because Pydantic's own JSON reader and writer reject lone surrogates (covered by `test_mappings_with_any_text_round_trip`).
+- Evidence: `uv run scripts/run_tests.py all` against a local `postgres:16` container (`PRIVYFLOW_TEST_DATABASE_URL`): 952 passed, 4 skipped, coverage 97%. `ruff check`, `ruff format --check` and `pyright` clean.
+- Testcontainers failed on this machine (Ryuk port mapping), so a plain Docker container was used instead.

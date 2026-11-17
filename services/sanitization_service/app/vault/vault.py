@@ -10,7 +10,9 @@ import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import Any, cast
+from typing import Any, Literal
+
+from pydantic import BaseModel
 
 from app.repositories.mapping_repository import MappingStore, NewMappingRecord
 from app.vault.credentials import credential_digest, generate_reference, is_valid_reference
@@ -18,6 +20,13 @@ from app.vault.crypto import Keyring, RecordBinding, SealedPayload
 from app.vault.errors import MappingIntegrityError
 
 _PAYLOAD_VERSION = 1
+
+
+class Payload(BaseModel):
+    """The plaintext that is encrypted: the placeholder-to-value map and a format version."""
+
+    v: Literal[1] = _PAYLOAD_VERSION
+    mappings: dict[str, str]
 
 
 def utc_now() -> datetime:
@@ -56,8 +65,8 @@ class Vault:
         now = self._clock()
         expires_at = now + timedelta(seconds=ttl_seconds)
         reference = generate_reference()  # returned once; only its keyed digest is stored
-        # ensure_ascii keeps the payload valid for any text, including lone surrogates.
-        payload = json.dumps({"v": _PAYLOAD_VERSION, "mappings": dict(mappings)}).encode("utf-8")
+        payload = json.dumps(Payload(mappings=dict(mappings)).model_dump()).encode("utf-8")
+        # json.dumps escapes lone surrogates, which pydantic's own JSON writer rejects.
         # Encrypt with the active key. Tenant and scope are authenticated with the data.
         sealed = self._keyring.seal(payload, RecordBinding(record_id, tenant_id, request_scope_id))
         self._store.add(
@@ -117,18 +126,9 @@ class Vault:
         return credential_digest(reference, self._pepper)
 
 
-def _parse_payload(plaintext: bytes) -> dict[str, str]:
+def _parse_payload(plaintext: bytes):
     try:
-        loaded = json.loads(plaintext)
-    except ValueError:
+        payload = Payload.model_validate(json.loads(plaintext))
+    except ValueError:  # bad JSON, or JSON that is not a valid Payload (ValidationError is one)
         raise MappingIntegrityError("stored mapping cannot be opened") from None
-    if not isinstance(loaded, dict):
-        raise MappingIntegrityError("stored mapping cannot be opened")
-    payload = cast("dict[str, object]", loaded)
-    mappings = payload.get("mappings")
-    if payload.get("v") != _PAYLOAD_VERSION or not isinstance(mappings, dict):
-        raise MappingIntegrityError("stored mapping cannot be opened")
-    items = cast("dict[object, object]", mappings).items()
-    if not all(isinstance(k, str) and isinstance(v, str) for k, v in items):
-        raise MappingIntegrityError("stored mapping cannot be opened")
-    return cast("dict[str, str]", dict(items))
+    return payload.mappings
