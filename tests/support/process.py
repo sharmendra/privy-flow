@@ -22,8 +22,11 @@ def free_port() -> int:
 class ServiceProcess:
     """A running service. Output goes to a log file so a full pipe can never block it."""
 
-    def __init__(self, service: str, env: dict[str, str], log_path: Path) -> None:
-        self.port = free_port()
+    def __init__(
+        self, service: str, env: dict[str, str], log_path: Path, port: int | None = None
+    ) -> None:
+        # A fixed port lets a test stop a service and start it again where its caller expects.
+        self.port = free_port() if port is None else port
         self.base_url = f"http://127.0.0.1:{self.port}"
         self._log_path = log_path
         # Never inherit PrivyFlow settings from the developer's shell.
@@ -62,6 +65,20 @@ class ServiceProcess:
             except httpx.TransportError:
                 time.sleep(0.2)
         raise TimeoutError("service did not become live in time")
+
+    def wait_until_ready(self, timeout: float = 30.0) -> None:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                if httpx.get(f"{self.base_url}/health/ready", timeout=1.0).status_code == 200:
+                    return
+            except httpx.TransportError:
+                pass
+            time.sleep(0.2)
+        raise TimeoutError("service did not become ready in time")
+
+    def is_running(self) -> bool:
+        return self._proc.poll() is None
 
     def output(self) -> str:
         self._log.flush()

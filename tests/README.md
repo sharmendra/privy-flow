@@ -12,7 +12,7 @@ uv run scripts/run_tests.py unit
 uv run scripts/run_tests.py integration   # PostgreSQL tests need Docker, or PRIVYFLOW_TEST_DATABASE_URL
 uv run scripts/run_tests.py security
 uv run scripts/run_tests.py evaluation
-uv run scripts/run_tests.py e2e
+uv run scripts/run_tests.py e2e           # needs PRIVYFLOW_TEST_DATABASE_URL (no Testcontainers)
 uv run scripts/run_tests.py all
 uv run scripts/run_tests.py lint
 uv run scripts/run_tests.py scan
@@ -28,7 +28,9 @@ Reports are written to `reports/`.
 | `unit/`, `integration/`, `security/`, `evaluation/`, `e2e/` | Test suites. The suite marker is added from the directory. |
 | `performance/locustfile.py` | Locust load test, run on demand. |
 | `fixtures/eval/` | Synthetic detection dataset and approval thresholds. |
-| `support/` | Service loader, leak assertions, evaluation metrics. |
+| `fixtures/pilot/` | Synthetic multi-paragraph samples for the end-to-end round trip. Owner review requested (PLAN_PILOT Q2). |
+| `fixtures/contracts/` | The saved internal API contract both services are tested against. |
+| `support/` | Service loader, leak assertions, evaluation metrics, the Sanitization stub, and the end-to-end `Stack`. |
 | `conftest.py` | Shared fixtures: service clients, tenant IDs. |
 
 ## Database for integration tests
@@ -48,3 +50,7 @@ Files named `test_*_pending.py` list behavior that is not built yet. Each entry 
 - Synthetic data only. No real PII, keys, or credentials.
 - Never lower a threshold, delete a test, or add a skip to get a green run.
 - Both services use a package named `app`, so only one loads per process. Cross-service tests run the services as separate processes.
+
+## End-to-end suite
+
+`tests/e2e/` starts both services as separate uvicorn processes over a new migrated PostgreSQL database and calls them over HTTP. It needs `PRIVYFLOW_TEST_DATABASE_URL` (the same admin URL as the integration tests); without it the tests fail with the reason. Each module creates and drops its own `pf_test_*` database. Direct SQL plays an operator who expires or revokes a record, or an attacker who edits a stored row. A database outage is simulated per database (connections refused and open ones dropped), so the server and other databases are untouched.

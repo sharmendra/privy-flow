@@ -31,7 +31,7 @@ Out of scope (matches product scope): document extraction, OCR, chunking, embedd
 | Integration | `tests/integration/` | `integration` | In-process app; PostgreSQL via Testcontainers (Docker) |
 | Security | `tests/security/` | `security` | In-process apps, test database |
 | Evaluation | `tests/evaluation/` | `evaluation` | Synthetic dataset, detector |
-| End-to-end | `tests/e2e/` | `e2e` | Both services running as separate processes |
+| End-to-end | `tests/e2e/` | `e2e` | Both services as separate processes, and a local PostgreSQL named by `PRIVYFLOW_TEST_DATABASE_URL` |
 | Performance | `tests/performance/` | none (Locust) | Running services |
 
 Shared code is in `tests/support/` (service loader, leak assertions, evaluation metrics) and `tests/conftest.py`. Markers are applied automatically from the directory.
