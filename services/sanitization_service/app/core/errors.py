@@ -18,6 +18,16 @@ def error_response(status_code: int, code: str, message: str, correlation_id: st
     )
 
 
+class ApiError(Exception):
+    """An expected failure with a fixed code and message. Never built from input or values."""
+
+    def __init__(self, status_code: int, code: str, message: str) -> None:
+        super().__init__(code)
+        self.status_code = status_code
+        self.code = code
+        self.message = message
+
+
 def internal_error(correlation_id: str) -> JSONResponse:
     return error_response(500, "internal_error", "An internal error occurred.", correlation_id)
 
@@ -43,6 +53,13 @@ async def _http_error(request: Request, exc: Exception) -> JSONResponse:
     return error_response(status_code, code, message, _correlation_id(request))
 
 
+async def _api_error(request: Request, exc: Exception) -> JSONResponse:
+    if not isinstance(exc, ApiError):
+        return internal_error(_correlation_id(request))
+    return error_response(exc.status_code, exc.code, exc.message, _correlation_id(request))
+
+
 def register_error_handlers(app: FastAPI) -> None:
+    app.add_exception_handler(ApiError, _api_error)
     app.add_exception_handler(RequestValidationError, _validation_error)
     app.add_exception_handler(StarletteHTTPException, _http_error)

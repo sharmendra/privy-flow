@@ -8,13 +8,6 @@ import pytest
 
 PENDING = [
     "detection confidence scores (the pilot recognizers report none)",
-    "restore-reference is high entropy and unpredictable",
-    "restore-reference is stored only as a digest",
-    "mapping encryption round trip with unique nonce",
-    "key version is stored and honored on decrypt",
-    "expired mapping is rejected",
-    "revoked mapping is rejected",
-    "mapping is bound to tenant and request scope",
 ]
 
 

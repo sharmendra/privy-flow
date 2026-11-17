@@ -37,6 +37,8 @@ The "Proving test" column names the planned test and the phase that builds it. T
 | Compromised De-sanitization Service or leaked service secret | Retrieve mappings of any tenant | Residual risk (D8). The caller must still hold a valid reference and scope for that tenant. The route is separate from the public API, and the client API key cannot call it. | `tests/security/test_internal_auth.py` (phase 6) |
 | Abusive client: oversized or malformed input | Exhaust memory or time | Request-size limits on both services, output limit on restoration, outbound timeout, bounded retries. Rate limiting is not in the pilot. | `tests/integration/test_sanitization_limits.py` and `tests/unit/test_size_limit.py` (Sanitization side, phase 4, executed); De-sanitization size, output and timeout tests (phase 7, pending) |
 
+Executed in phase 5 (names differ from the proposals above): `tests/unit/test_vault_crypto.py`, `test_vault_credentials.py`, `test_vault.py`, `test_api_auth.py`; `tests/integration/test_mapping_repository.py`, `test_sanitization_api.py`; `tests/security/test_sanitization_security.py` (isolation matrix, leakage). The De-sanitization-side and internal-API rows stay pending.
+
 ## 4. Specific controls and the property each gives
 
 | Control | Property |

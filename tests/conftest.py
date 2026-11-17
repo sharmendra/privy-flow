@@ -2,7 +2,7 @@
 
 import os
 from collections.abc import AsyncGenerator, AsyncIterator, Callable
-from contextlib import asynccontextmanager
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -10,13 +10,16 @@ import httpx
 import pytest
 
 from tests.support.service_loader import load_service_app
-from tests.support.settings_data import write_settings_file
+from tests.support.settings_data import valid_content, write_settings_file
+from tests.support.vault_api import VaultApi, install_in_memory_vault
+from tests.support.vault_env import sanitization_secret_env
 
 SUITES = ("unit", "integration", "security", "evaluation", "e2e")
 
 # Valid settings that need no real database. Tests override or remove entries as needed.
 DEFAULT_SANITIZATION_ENV = {
     "PRIVYFLOW_SAN_DATABASE_URL": "postgresql+psycopg://nobody:nopass@127.0.0.1:1/none",
+    **sanitization_secret_env(),
 }
 DEFAULT_DESANITIZATION_ENV = {
     "PRIVYFLOW_DESAN_SANITIZATION_BASE_URL": "http://127.0.0.1:1",
@@ -111,3 +114,31 @@ async def desanitization_client(
 def tenant_ids() -> tuple[str, str]:
     """Two distinct synthetic tenants for isolation tests."""
     return ("tenant-test-a", "tenant-test-b")
+
+
+VaultApiFactory = Callable[..., AbstractAsyncContextManager[VaultApi]]
+
+
+@pytest.fixture
+def vault_api_factory(sanitization_app_factory: AppFactory, tmp_path: Path) -> VaultApiFactory:
+    """Build the Sanitization app over an in-memory vault. `settings` overrides the test
+    settings content, for example `default_ttl_seconds` or `max_request_bytes`."""
+
+    @asynccontextmanager
+    async def build(**settings: Any) -> AsyncGenerator[VaultApi]:
+        env: dict[str, str | None] = {}
+        if settings:
+            path = write_settings_file(tmp_path / "api-settings.json", valid_content(**settings))
+            env["PRIVYFLOW_SETTINGS_FILE"] = str(path)
+        app = sanitization_app_factory(env)
+        async with client_for(app) as client:
+            store, clock, vault = install_in_memory_vault(app)
+            yield VaultApi(app, client, store, clock, vault)
+
+    return build
+
+
+@pytest.fixture
+async def vault_api(vault_api_factory: VaultApiFactory) -> AsyncIterator[VaultApi]:
+    async with vault_api_factory() as api:
+        yield api

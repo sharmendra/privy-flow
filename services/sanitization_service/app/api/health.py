@@ -21,9 +21,14 @@ async def live() -> dict[str, str]:
 
 @router.get("/health/ready")
 def ready(request: Request) -> JSONResponse:
-    """Ready means the startup settings loaded and the database answers."""
+    """Ready means the startup settings, keys and API keys loaded and the database answers."""
     try:
-        settings_loaded = getattr(request.app.state, "settings_snapshot", None) is not None
+        state = request.app.state
+        settings_loaded = (
+            getattr(state, "settings_snapshot", None) is not None
+            and getattr(state, "vault", None) is not None
+            and getattr(state, "authenticator", None) is not None
+        )
         reachable = database_is_reachable(get_engine(request.app))
     except Exception as exc:
         log_event(

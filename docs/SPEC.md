@@ -357,6 +357,32 @@ The result holds the sanitized text, the placeholder-to-value mappings and the e
 
 A placeholder cannot be formed by joining the input around a replacement, because a placeholder has no `[` or `]` inside it and every replacement starts with `[`. Restoration therefore only needs exact matching on the placeholder shape `\[[A-Z][A-Z0-9_]*_[0-9]{3,}\]`.
 
+### 9.13 Vault, API keys and the public endpoint (Sanitization Service)
+
+Implemented in `app/vault/`, `app/repositories/mapping_repository.py`, `app/core/auth.py` and `app/api/sanitizations.py`.
+
+| Rule | Behavior |
+|---|---|
+| Restore-reference | `pf1_` plus 43 URL-safe characters from 32 bytes of `secrets` (256 bits). Only an HMAC-SHA-256 digest keyed with a server-side pepper is stored, and it is the lookup key (unique index). |
+| Encryption | AES-256-GCM (`cryptography` package), a fresh random 96-bit nonce per seal. The payload is `{"v":1,"mappings":{placeholder: value}}`; request text is never stored. |
+| Associated data | Record id, tenant, request scope and key version. A ciphertext moved to another row, tenant or scope, or relabeled with another key version, fails to open. |
+| Keyring | Keys by integer version. New rows use the active version; every listed version still opens its rows. A row whose version is not listed fails safely. |
+| Lookup | Digest, tenant and request scope must all match, and the record must be unexpired, unrevoked and undeleted. Time is injected. `retrieve` returns nothing for every such miss and raises `MappingIntegrityError` for a found row that fails authentication. |
+| Expiry | `created_at` plus the tenant's effective `max_ttl_seconds` (smallest profile lifetime, never above the default TTL). |
+| Revocation and deletion | `Vault.revoke` and `Vault.mark_deleted` (reference plus tenant) set a timestamp. There is no public endpoint and no command line tool yet. |
+| Stored metadata | `profiles` holds the applied profile IDs and versions, the settings snapshot version and hash. |
+
+Secrets come from the environment only, and a missing or malformed one leaves the service alive but not ready (`/health/ready` 503, requests 503 `dependency_unavailable`):
+
+| Variable | Content |
+|---|---|
+| `PRIVYFLOW_SAN_API_KEYS` | JSON object of tenant ID to API key (ASCII, at least 24 characters, none shared) |
+| `PRIVYFLOW_SAN_ENCRYPTION_KEYS` | JSON object of key version to base64 AES-256 key |
+| `PRIVYFLOW_SAN_ACTIVE_KEY_VERSION` | Version used for new rows; must be in the keyring |
+| `PRIVYFLOW_SAN_CREDENTIAL_PEPPER` | Base64, at least 32 bytes |
+
+Public endpoint behavior beyond 9.3 and 9.4: the API key is read from `X-API-Key` only and compared in constant time against every configured key. Authentication runs before the body is parsed, so an unauthenticated caller gets 401 and learns nothing about the schema (a body over the size limit is refused earlier, by the size limit, with 413). A database failure while storing returns 503 `dependency_unavailable`; text with no reversible entity needs no database. Responses carry `Cache-Control: no-store`. Keys, pepper and the service secret are pilot mechanisms (D2 to D4).
+
 ## 10. Acceptance criteria for the core engine
 
 - Both services run independently.

@@ -6,6 +6,7 @@ requires-python = ">=3.11"
 # Runtime dependencies, each with the reason it is needed.
 dependencies = [
     "alembic>=1.20.1",  # schema migrations for the Sanitization vault database
+    "cryptography>=46.0",  # AES-256-GCM authenticated encryption for the vault (Sanitization only)
     "fastapi>=0.163.1",  # HTTP framework for both services
     "psycopg[binary]>=3.3.9",  # PostgreSQL driver (Sanitization Service only)
     "pydantic-settings>=2.16.3",  # typed settings from environment variables

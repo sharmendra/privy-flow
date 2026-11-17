@@ -3,9 +3,6 @@
 import pytest
 
 PENDING = [
-    "Sanitization API: valid request returns sanitized text and restore-reference",
-    "Sanitization API: invalid, oversized and unsupported-policy input fail safely",
-    "Sanitization API: unauthenticated request is rejected",
     "Internal mapping API: only the De-sanitization Service identity is accepted",
     "Internal mapping API: scope, expiry and revocation are enforced",
     "De-sanitization API: valid restoration returns original text",

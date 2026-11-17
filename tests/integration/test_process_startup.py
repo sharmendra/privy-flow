@@ -7,6 +7,7 @@ import httpx
 from tests.support.leak import CANARIES, assert_no_leak
 from tests.support.process import ServiceProcess
 from tests.support.settings_data import write_settings_file
+from tests.support.vault_env import sanitization_secret_env
 
 
 def test_both_services_start_independently_and_report_health(
@@ -16,6 +17,7 @@ def test_both_services_start_independently_and_report_health(
     san_env = {
         "PRIVYFLOW_SAN_DATABASE_URL": empty_database_url,
         "PRIVYFLOW_SETTINGS_FILE": str(settings_file),
+        **sanitization_secret_env(),
     }
     # The De-sanitization process gets no database setting at all.
     desan_env = {"PRIVYFLOW_DESAN_SANITIZATION_BASE_URL": "http://127.0.0.1:1"}
@@ -36,7 +38,10 @@ def test_both_services_start_independently_and_report_health(
 def test_sanitization_readiness_is_503_in_a_real_process_when_database_is_down(
     tmp_path: Path,
 ) -> None:
-    env = {"PRIVYFLOW_SAN_DATABASE_URL": "postgresql+psycopg://nobody:nopass@127.0.0.1:1/none"}
+    env = {
+        "PRIVYFLOW_SAN_DATABASE_URL": "postgresql+psycopg://nobody:nopass@127.0.0.1:1/none",
+        **sanitization_secret_env(),
+    }
     with ServiceProcess("sanitization_service", env, tmp_path / "san.log") as san:
         san.wait_until_live()
         assert httpx.get(f"{san.base_url}/health/live").status_code == 200

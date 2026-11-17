@@ -35,17 +35,17 @@ The project documentation defines the target architecture and requirements. Do n
 | Capability | Status |
 |---|---|
 | Product and service boundaries | Defined |
-| Sanitization API | To be implemented / verified |
+| Sanitization API | `POST /api/v1/sanitizations` and `GET /api/v1/policies` implemented and executed, pilot phase 5 (see section 4) |
 | De-sanitization API | To be implemented / verified |
 | Sensitive entity detection | Six pilot recognizers implemented and executed, pilot phase 3 (see section 4); no PERSON, Aadhaar, address or date detection |
 | Policy engine | Profile loader, effective-policy resolver and overlap rule implemented and executed, pilot phase 3; not yet used by an API |
 | Placeholder generation and span replacement | Implemented and executed, pilot phase 4 (see section 4); pure logic, not yet used by an API |
 | Request size limit (413) and sanitization request schema | Implemented and executed for the Sanitization Service, pilot phase 4, through a test-only route; the public endpoint is phase 5. De-sanitization side is phase 7 |
-| Encrypted mapping vault | Planned |
-| Credential hashing and lookup | Planned |
+| Encrypted mapping vault | Implemented and executed against PostgreSQL, pilot phase 5 |
+| Credential hashing and lookup | Implemented and executed, pilot phase 5 (HMAC digest, unique index) |
 | Authenticated internal mapping API | Planned |
-| Authorization and tenant isolation | Planned |
-| Expiry and revocation | Planned |
+| Authorization and tenant isolation | Public API key authentication and tenant scoping implemented and executed for the Sanitization API, phase 5. Internal API and De-sanitization side planned |
+| Expiry and revocation | Implemented in the vault and repository and executed, phase 5; no public revoke endpoint |
 | Restoration logic | Planned |
 | Settings store (file and database backends, validation, audit, CLI) | Implemented and executed, pilot phase 2A (see section 4) |
 | Service foundations (both apps, health, correlation IDs, redacted logging, error body, vault table migration) | Implemented and executed, pilot phase 2 (see section 4) |
@@ -60,7 +60,7 @@ Update each row only after inspecting code and running the relevant tests.
 
 ## 4. What is built and how to run it
 
-The repository contains documentation, the test harness, and the pilot phase 2 service foundations: two FastAPI apps with health endpoints, correlation IDs, allowlist logging and the standard error body, plus the Sanitization `mapping_records` migration. Phase 3 added detection (six regex and checksum recognizers), the profile loader, the effective-policy resolver and the span planner. Phase 4 added placeholder generation and span replacement, the sanitization request schema and the request size limit. There is no vault logic, authentication, public sanitization endpoint or restoration yet.
+The repository contains documentation, the test harness, and the pilot phase 2 service foundations: two FastAPI apps with health endpoints, correlation IDs, allowlist logging and the standard error body, plus the Sanitization `mapping_records` migration. Phase 3 added detection (six regex and checksum recognizers), the profile loader, the effective-policy resolver and the span planner. Phase 4 added placeholder generation and span replacement, the sanitization request schema and the request size limit. Phase 5 added the encrypted vault, API-key authentication and the public sanitization and policy endpoints. There is no internal mapping endpoint or restoration yet.
 
 Run locally (PowerShell or macOS; values stay in git-ignored files):
 
@@ -122,7 +122,8 @@ Not verified:
 | 2A. Settings store | Implemented 2026-11-17; one criterion open (macOS run of the CLI). |
 | 3. Detection and policy | Implemented 2026-11-17; one criterion open: the file-versus-database policy comparison test is written but has not run (see "Phase 3 evidence"). |
 | 4. Placeholder sanitization | Implemented 2026-11-17; all five criteria met (see "Phase 4 evidence"). |
-| 5 to 8 | Not started |
+| 5. Secure mapping vault | Implemented 2026-11-17; all twelve criteria met (see "Phase 5 evidence"). |
+| 6 to 8 | Not started |
 
 Phase 1 delivered (documentation and data only, no service code, no test changes):
 
@@ -279,6 +280,42 @@ Decisions and limits to know about:
 - The mappings are held in memory only in this phase. Nothing is stored, so the encrypted vault, the restore-reference and expiry are phase 5.
 - Not built: the public sanitization endpoint, API-key authentication, the vault and the restorer.
 
+### Phase 5 evidence (secure mapping vault and public sanitization endpoint)
+
+Recorded 2026-11-17, Windows, Python 3.13.13, local PostgreSQL 18.6. This session the owner supplied the local database login in chat. It was passed as `PRIVYFLOW_TEST_DATABASE_URL` in the shell for the test commands only, and written to no file. Tests create and drop their own `pf_test_*` databases. The Testcontainers path has still never run (Docker was off).
+
+| Command | Result |
+|---|---|
+| `uv run scripts/run_tests.py unit` | 471 passed, 0 failed, 10 skipped |
+| `uv run scripts/run_tests.py security` | 14 passed, 0 failed, 12 skipped |
+| `uv run scripts/run_tests.py evaluation` | 24 passed, 0 failed, 0 skipped |
+| `uv run scripts/run_tests.py all` (with the database) | 750 passed, 0 failed, 37 skipped; coverage 96.60% (minimum 80%) |
+| `uv run scripts/run_tests.py lint` | Ruff check and format check passed |
+| `uv run pyright` | 0 errors, 0 warnings, no suppressions |
+| `uv run scripts/run_tests.py scan` | `pip-audit`: no known vulnerabilities. Bandit on `services`: no findings. |
+| Mutation spot checks (by hand, then reverted) | Associated data reduced to the key version; expiry filter removed from the repository; fixed nonce; tenant taken from a constant instead of the key; low-entropy reference. Each made tests fail. The last one first survived and exposed a weak entropy test, which was then strengthened. |
+
+With the database available, the database tests from phases 2 to 4 ran and passed for the first time since phase 2, including the file-versus-database policy comparison (phase 3 criterion, now ticked) and the strict-coverage readiness test. Without a database the same run had 16 failures and 70 errors, all the Docker error.
+
+Skips went from 52 to 37: 15 pending placeholders were replaced by real tests (7 unit, 5 security, 3 integration). Removing the two entries that depend on the database ("stored only as a digest", "encrypted at rest") rests on `test_mapping_repository.py`, which ran. No test was deleted, skipped or weakened, and no threshold changed.
+
+New code: `app/vault/` (`credentials.py`, `crypto.py`, `config.py`, `vault.py`, `errors.py`), `app/repositories/mapping_repository.py`, `app/core/auth.py`, `app/api/sanitizations.py`; edited `app/main.py`, `app/api/health.py`, `app/core/config.py`, `app/core/errors.py`, `app/schemas/sanitization.py`. New dependency: `cryptography` (AES-256-GCM). No migration: the phase 2 table already had every column. `scripts/gen_local_secrets.py` now generates the API keys, encryption key and pepper, and has `--add-missing-secrets` for an existing `.env`.
+
+New tests: `tests/unit/test_vault_crypto.py`, `test_vault_credentials.py`, `test_vault_config.py`, `test_vault.py`, `test_api_auth.py`, extended `test_gen_local_secrets.py`; `tests/integration/test_sanitization_api.py` (real app and real crypto over an in-memory store, no database) and `test_mapping_repository.py` (25, real PostgreSQL); `tests/security/test_sanitization_security.py`. Support: `tests/support/vault_env.py`, `vault_fakes.py`, `vault_api.py`.
+
+Decisions and limits to know about:
+
+- Action needed on the existing local setup: the Sanitization Service now needs four more secrets, or it stays alive but not ready. Run `uv run scripts/gen_local_secrets.py --add-missing-secrets` once to append them to `services/sanitization_service/.env`. I did not touch your `.env`. The generated API keys are in that file, one per tenant in `config/settings.example.json`.
+- The endpoint reads and validates the body itself, after authentication, so a caller without a valid key gets 401 and not a schema error. A request over the size limit still gets 413 first, from the middleware.
+- A body that names `tenant_id` or profiles is a 422 (SPEC 9.3), so the "tenant from the key even if the body names another" criterion is shown as rejection plus the stored row carrying the key's tenant.
+- The `redact` criterion is shown through a stub policy table, because no shipped profile uses `redact`.
+- `Vault.retrieve` is built and tested but has no route yet; the internal endpoint is phase 6. A found row that fails authentication raises `MappingIntegrityError`; phase 6 decides how to map it (it must not look different from a miss to the caller).
+- Revocation and deletion exist as `Vault` functions only. The "admin tool entry point" from Q3 is not built.
+- API keys are held in memory as configured and compared in constant time; they are not hashed. Pilot only (D2).
+- Random 96-bit nonces are safe at pilot volume (limit about 2^32 rows per key). Key rotation tooling and re-encryption of old rows are not built.
+- Not built: the internal retrieval endpoint (phase 6), the restorer (phase 7), rate limiting, and an audit store.
+- Still open: the coverage gate on `unit` alone (phase 2), and the CLI check on macOS (phase 2A).
+
 ## 5. Validation checklist
 
 - [ ] Inspect the repository and remove or archive obsolete extraction-service scaffolding only after review.
@@ -289,8 +326,8 @@ Decisions and limits to know about:
 - [ ] Implement authentication and authorization boundaries.
 - [x] Implement recognizer and policy baseline. (Phase 3: six recognizers, overlap rule D6, six profiles, restrictiveness rules; one database-backed test has not run.)
 - [x] Implement placeholder generation and collision handling. (Pilot phase 4: `[TYPE_NNN]`, per-request consistency, collision skip, redact markers; property tests executed.)
-- [ ] Implement secure credential generation and hash lookup.
-- [ ] Implement authenticated encryption and key-version metadata.
+- [x] Implement secure credential generation and hash lookup. (Pilot phase 5.)
+- [x] Implement authenticated encryption and key-version metadata. (Pilot phase 5.)
 - [ ] Implement internal mapping retrieval with scope/expiry/revocation validation.
 - [ ] Implement authorized restoration.
 - [ ] Run tenant-isolation and security tests.

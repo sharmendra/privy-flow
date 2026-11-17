@@ -4,11 +4,18 @@
 
 Writes services/<service>/.env and config/settings.json (a copy of the example). All three
 are git-ignored. Existing files are kept unless --force is given. The generated database
-passwords are random. These values are for local development only. Later phases add more
-generated secrets here.
+passwords, API keys, encryption key and credential pepper are random. These values are for
+local development only.
+
+    uv run scripts/gen_local_secrets.py --add-missing-secrets
+
+appends only the vault secrets that an existing Sanitization .env lacks (for a file written
+before they existed). It changes nothing else and never overwrites a value.
 """
 
 import argparse
+import base64
+import json
 import secrets
 import shutil
 import sys
@@ -22,6 +29,12 @@ DESAN_ENV = Path("services/desanitization_service/.env")
 SETTINGS_FILE = Path("config/settings.json")
 SETTINGS_EXAMPLE = Path("config/settings.example.json")
 RUNTIME_ROLE = "privyflow_runtime"
+VAULT_SECRET_NAMES = (
+    "PRIVYFLOW_SAN_API_KEYS",
+    "PRIVYFLOW_SAN_ENCRYPTION_KEYS",
+    "PRIVYFLOW_SAN_ACTIVE_KEY_VERSION",
+    "PRIVYFLOW_SAN_CREDENTIAL_PEPPER",
+)
 SETTINGS_ADMIN_ROLE = "privyflow_settings_admin"
 
 
@@ -33,6 +46,45 @@ def _role_url(admin_url: str, role: str) -> str:
     )
 
 
+def _example_tenants() -> list[str]:
+    """The tenants of the example settings, so each gets an API key."""
+    example = json.loads((ROOT / SETTINGS_EXAMPLE).read_text(encoding="utf-8"))
+    return list(example["tenant_profiles"])
+
+
+def _b64(raw: bytes) -> str:
+    return base64.b64encode(raw).decode("ascii")
+
+
+def _vault_secrets() -> dict[str, str]:
+    """New random values for every vault secret. JSON values are quoted for dotenv."""
+    api_keys = {tenant: secrets.token_urlsafe(32) for tenant in _example_tenants()}
+    encryption_keys = {"1": _b64(secrets.token_bytes(32))}
+    return {
+        "PRIVYFLOW_SAN_API_KEYS": f"'{json.dumps(api_keys)}'",
+        "PRIVYFLOW_SAN_ENCRYPTION_KEYS": f"'{json.dumps(encryption_keys)}'",
+        "PRIVYFLOW_SAN_ACTIVE_KEY_VERSION": "1",
+        "PRIVYFLOW_SAN_CREDENTIAL_PEPPER": _b64(secrets.token_bytes(32)),
+    }
+
+
+def _vault_secret_text(values: dict[str, str]) -> str:
+    return "".join(f"{name}={value}\n" for name, value in values.items())
+
+
+def add_missing_vault_secrets(root: Path) -> list[str]:
+    """Append the vault secrets an existing Sanitization .env lacks. Returns their names."""
+    path = root / SAN_ENV
+    existing = path.read_text(encoding="utf-8") if path.exists() else ""
+    present = {line.split("=", 1)[0].strip() for line in existing.splitlines() if "=" in line}
+    missing = {n: v for n, v in _vault_secrets().items() if n not in present}
+    if missing:
+        separator = "" if not existing or existing.endswith("\n") else "\n"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(existing + separator + _vault_secret_text(missing), encoding="utf-8")
+    return list(missing)
+
+
 def _sanitization_env(admin_url: str) -> str:
     return (
         "# Local development only. Never commit this file.\n"
@@ -40,6 +92,8 @@ def _sanitization_env(admin_url: str) -> str:
         f"PRIVYFLOW_SAN_MIGRATION_DATABASE_URL={admin_url}\n"
         "# Used only by scripts/settings.py, never by the running service.\n"
         f"PRIVYFLOW_SAN_SETTINGS_ADMIN_DATABASE_URL={_role_url(admin_url, SETTINGS_ADMIN_ROLE)}\n"
+        "# Public API keys by tenant, vault encryption keys by version, and the credential\n"
+        "# pepper. Read by the running service only.\n" + _vault_secret_text(_vault_secrets())
     )
 
 
@@ -78,9 +132,20 @@ def generate(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--admin-url", required=True, help="PostgreSQL admin URL for migrations")
+    parser.add_argument("--admin-url", help="PostgreSQL admin URL for migrations")
     parser.add_argument("--force", action="store_true", help="overwrite existing files")
+    parser.add_argument(
+        "--add-missing-secrets",
+        action="store_true",
+        help="append the vault secrets an existing Sanitization .env lacks",
+    )
     args = parser.parse_args()
+    if args.add_missing_secrets:
+        names = add_missing_vault_secrets(ROOT)
+        print(f"added {', '.join(names)}" if names else "nothing to add: all vault secrets exist")
+        return 0
+    if not args.admin_url:
+        parser.error("--admin-url is required unless --add-missing-secrets is given")
     written = generate(ROOT, args.admin_url, force=args.force)
     for path in written:
         print(f"wrote {path.relative_to(ROOT)}")

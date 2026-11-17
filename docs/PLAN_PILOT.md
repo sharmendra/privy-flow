@@ -1,6 +1,6 @@
 # PLAN_PILOT.md
 
-Status: decisions D1 to D17 and questions Q1 to Q8 resolved on the recommended approach (owner instruction, 2026-11-17). Phase 1 (documentation) implemented 2026-11-17, with one criterion awaiting owner review. Phase 2 (service foundations) implemented 2026-11-17, with one criterion open (see below). Phase 2A (settings store) implemented 2026-11-17, with one criterion open (see below). Phase 3 (detection and policy) implemented 2026-11-17, with one criterion open (see below). Phase 4 (placeholder sanitization) implemented 2026-11-17, all criteria met (see the note under it). Phases 5 onward are not started.
+Status: decisions D1 to D17 and questions Q1 to Q8 resolved on the recommended approach (owner instruction, 2026-11-17). Phase 1 (documentation) implemented 2026-11-17, with one criterion awaiting owner review. Phase 2 (service foundations) implemented 2026-11-17, with one criterion open (see below). Phase 2A (settings store) implemented 2026-11-17, with one criterion open (see below). Phase 3 (detection and policy) implemented 2026-11-17, with one criterion open (see below). Phase 4 (placeholder sanitization) implemented 2026-11-17, all criteria met (see the note under it). Phase 5 (secure mapping vault and public sanitization endpoint) implemented 2026-11-17, all criteria met (see "Phase 5 evidence" in `docs/STATUS.md`); the open phase 3 criterion was ticked in the same run. Phases 6 onward are not started.
 
 ## Objective
 
@@ -289,7 +289,7 @@ Success criteria:
 - [x] Per-type and overall precision, recall, and F1 for the pilot types are recorded in `docs/STATUS.md` as a baseline. `thresholds.json` stays `null` until the owner approves minimums. (Recorded in `docs/STATUS.md`, phase 3 evidence. Thresholds still `null`.)
 - [x] Dataset types outside the pilot (PERSON, Aadhaar, IFSC, business terms) are reported as not covered, not as failures or passes. (Counted under `not_covered` in the report and skipped by threshold checks.)
 - [x] Profile loading tests pass: all six profiles load; an unknown profile ID, an empty enabled list, and a malformed tenant ID each fail startup with a safe message. (`test_profiles.py`, `test_policy.py`, and the database-free tests in `test_policy_startup.py`.)
-- [ ] The same tenant flags give the same effective policy whether loaded from the file backend or the database backend. (Open: `test_the_same_flags_give_the_same_effective_policy_from_file_and_database` is written but has not run. Docker was off and no database URL was set. Tick it after a run with PostgreSQL.)
+- [x] The same tenant flags give the same effective policy whether loaded from the file backend or the database backend. (Ticked in phase 5: `test_the_same_flags_give_the_same_effective_policy_from_file_and_database` ran and passed against local PostgreSQL.)
 - [x] A tenant with no flag entry resolves to `gdpr` only; a tenant with several profiles resolves to the union of their entity types. (`test_policy.py`.)
 - [x] Conflict tests pass for every rule in the restrictiveness table, using synthetic test profiles that disagree on action and lifetime. (`test_policy.py`, one test per rule.)
 - [x] Hypothesis properties pass: adding a profile never removes an entity from the masked set or lengthens the lifetime, and listing order does not change the result. (`test_policy.py`.)
@@ -315,18 +315,18 @@ What phase 4 added beyond the placeholder logic, because the last criterion need
 What it builds: credential generation, HMAC digest lookup, AES-256-GCM encryption with bound associated data, the keyring with version handling, the repository with tenant-and-scope-scoped lookup, expiry, revocation, and deletion marking, and the public `POST /api/v1/sanitizations` endpoint with API-key auth. Why: this is the crypto and data-protection core. It uses the `cryptography` package only; no custom primitives.
 
 Success criteria:
-- [ ] Unit tests pass: round trip, unique nonce across 10,000 encryptions, ciphertext differs from plaintext, tampered ciphertext, nonce, key version, and associated data are each rejected.
-- [ ] A sample of 100,000 generated references has no duplicates and each carries at least 128 bits of entropy (per `docs/SPEC.md` section 12).
-- [ ] A database test inspects every column of stored rows and finds no plaintext reference or mapping value (canary check), and every row has an algorithm and key version.
-- [ ] A row written under key version 1 still decrypts after the keyring gains version 2; an unknown key version fails safely.
-- [ ] Expired, revoked, and deleted records are not returned by the repository; time is controlled with an injected clock, no sleeps.
-- [ ] Sanitization API tests pass: valid request, bad key (401), invalid and oversized input, unsupported policy, and the tenant being taken from the key even if the body names a different tenant.
-- [ ] `GET /api/v1/policies` returns the calling tenant's effective policy, profiles, and uncovered types, and never another tenant's.
-- [ ] Two tenants with different enabled profiles get different masking for the same input in the same test run.
-- [ ] The stored expiry equals the smallest `max_ttl` of the tenant's profiles; it is never longer than the default TTL.
-- [ ] A synthetic `redact` rule masks the value, stores nothing for it, returns a null reference when nothing else was stored, and restoration leaves the marker untouched.
-- [ ] A request with a `policy_id` other than `effective`, or a body field naming profiles, is rejected.
-- [ ] Coverage for vault and crypto modules is at least 90% line coverage, branch coverage reviewed.
+- [x] Unit tests pass: round trip, unique nonce across 10,000 encryptions, ciphertext differs from plaintext, tampered ciphertext, nonce, key version, and associated data are each rejected. (`tests/unit/test_vault_crypto.py`, 10,000 nonces, every tamper case.)
+- [x] A sample of 100,000 generated references has no duplicates and each carries at least 128 bits of entropy (per `docs/SPEC.md` section 12). (`tests/unit/test_vault_credentials.py`.)
+- [x] A database test inspects every column of stored rows and finds no plaintext reference or mapping value (canary check), and every row has an algorithm and key version. (`tests/integration/test_mapping_repository.py`, run against local PostgreSQL 18.)
+- [x] A row written under key version 1 still decrypts after the keyring gains version 2; an unknown key version fails safely. (unit with an in-memory store, and against PostgreSQL.)
+- [x] Expired, revoked, and deleted records are not returned by the repository; time is controlled with an injected clock, no sleeps. (fake clock; unit and PostgreSQL.)
+- [x] Sanitization API tests pass: valid request, bad key (401), invalid and oversized input, unsupported policy, and the tenant being taken from the key even if the body names a different tenant. (`tests/integration/test_sanitization_api.py`; a body naming a tenant is a 422, as SPEC 9.3 says, and the row's tenant is the key's.)
+- [x] `GET /api/v1/policies` returns the calling tenant's effective policy, profiles, and uncovered types, and never another tenant's.
+- [x] Two tenants with different enabled profiles get different masking for the same input in the same test run. (`gdpr` against `gdpr` plus `hipaa` on an SSN.)
+- [x] The stored expiry equals the smallest `max_ttl` of the tenant's profiles; it is never longer than the default TTL.
+- [x] A synthetic `redact` rule masks the value, stores nothing for it, returns a null reference when nothing else was stored, and restoration leaves the marker untouched. (through a stub policy resolver; the reference test restorer leaves the marker.)
+- [x] A request with a `policy_id` other than `effective`, or a body field naming profiles, is rejected.
+- [x] Coverage for vault and crypto modules is at least 90% line coverage, branch coverage reviewed. (100% line and branch on `app/vault/*` and the repository; `app/api/sanitizations.py` 93%.)
 
 ### Phase 6. Internal mapping API
 

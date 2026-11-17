@@ -25,6 +25,14 @@ class Settings(BaseSettings):
     )
     settings_file: Path | None = Field(default=None, validation_alias="PRIVYFLOW_SETTINGS_FILE")
 
+    # Secrets for the vault and the public API. They come from the environment only and are
+    # parsed and validated at startup (app.vault.config, app.core.auth). A missing or malformed
+    # value leaves the service alive but not ready.
+    api_keys: SecretStr  # JSON object: tenant ID to API key
+    encryption_keys: SecretStr  # JSON object: key version to base64 AES-256 key
+    active_key_version: int = Field(ge=1)
+    credential_pepper: SecretStr  # base64, at least 32 bytes
+
     @field_validator("database_url")
     @classmethod
     def _postgresql_only(cls, value: SecretStr) -> SecretStr:
