@@ -34,6 +34,7 @@ class RequestSizeLimitMiddleware:
                 response = payload_too_large(str(scope["state"]["correlation_id"]))
                 await response(scope, receive, send)
                 return
+        # The header may be missing or wrong, so count the bytes as they arrive.
         received = 0
 
         async def counted() -> Message:

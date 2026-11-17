@@ -62,13 +62,14 @@ class Keyring:
 
     def seal(self, plaintext: bytes, binding: RecordBinding) -> SealedPayload:
         version = self.active_version
-        nonce = os.urandom(NONCE_BYTES)
+        nonce = os.urandom(NONCE_BYTES)  # a fresh random nonce for every encryption
         ciphertext = AESGCM(self._keys[version]).encrypt(
             nonce, plaintext, _associated_data(binding, version)
         )
         return SealedPayload(ciphertext, nonce, ALGORITHM, version)
 
     def open(self, sealed: SealedPayload, binding: RecordBinding) -> bytes:
+        # Every failure raises the same error, so a caller cannot tell the causes apart.
         key = self._keys.get(sealed.key_version)
         if sealed.algorithm != ALGORITHM or key is None or len(sealed.nonce) != NONCE_BYTES:
             raise MappingIntegrityError("stored mapping cannot be opened")

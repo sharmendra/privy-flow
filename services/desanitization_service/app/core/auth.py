@@ -65,6 +65,7 @@ class ApiKeyAuthenticator:
     def tenant_for(self, presented: str | None) -> str | None:
         candidate = (presented or "").encode("utf-8")
         found: str | None = None
+        # Check every key with no early exit, so timing does not reveal which key came close.
         for tenant, key in self._keys:
             if hmac.compare_digest(candidate, key):
                 found = tenant

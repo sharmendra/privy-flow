@@ -52,12 +52,13 @@ class Vault:
         ttl_seconds: int,
     ) -> StoredMapping:
         """Encrypt and store the mappings. Returns the new reference and its expiry."""
-        record_id = uuid.uuid4()
+        record_id = uuid.uuid4()  # also bound into the ciphertext, so it cannot move rows
         now = self._clock()
         expires_at = now + timedelta(seconds=ttl_seconds)
-        reference = generate_reference()
+        reference = generate_reference()  # returned once; only its keyed digest is stored
         # ensure_ascii keeps the payload valid for any text, including lone surrogates.
         payload = json.dumps({"v": _PAYLOAD_VERSION, "mappings": dict(mappings)}).encode("utf-8")
+        # Encrypt with the active key. Tenant and scope are authenticated with the data.
         sealed = self._keyring.seal(payload, RecordBinding(record_id, tenant_id, request_scope_id))
         self._store.add(
             NewMappingRecord(
@@ -86,11 +87,12 @@ class Vault:
         MappingIntegrityError.
         """
         if not is_valid_reference(reference):
-            return None
+            return None  # cheap format check first, so junk never reaches the database
         digest = self._digest(reference)
         record = self._store.find_active(digest, tenant_id, request_scope_id, self._clock())
         if record is None:
             return None
+        # Opening raises MappingIntegrityError if the row was tampered with.
         sealed = SealedPayload(
             record.ciphertext, record.nonce, record.encryption_alg, record.key_version
         )

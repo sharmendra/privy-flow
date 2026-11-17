@@ -7,6 +7,7 @@ from app.core.config import load_settings
 
 
 def create_db_engine(url: str) -> Engine:
+    # pool_pre_ping drops dead connections; the short connect timeout keeps readiness fast.
     return create_engine(url, pool_pre_ping=True, connect_args={"connect_timeout": 3})
 
 

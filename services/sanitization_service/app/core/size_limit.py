@@ -28,12 +28,14 @@ class RequestSizeLimitMiddleware:
             await self.app(scope, receive, send)
             return
         limit = _limit(scope)
+        # Fast path: a declared length is used only to refuse early, before reading anything.
         declared = Headers(scope=scope).get("content-length")
         if declared is not None and declared.isascii() and declared.isdigit():
             if int(declared) > limit:
                 response = payload_too_large(str(scope["state"]["correlation_id"]))
                 await response(scope, receive, send)
                 return
+        # Slow path: the header may be missing or wrong, so count the bytes as they arrive.
         received = 0
 
         async def counted() -> Message:

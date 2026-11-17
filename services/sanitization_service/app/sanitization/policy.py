@@ -39,11 +39,13 @@ def resolve_policy(
     actions: dict[str, Action] = {}
     for profile in profiles:
         for entity_type, action in profile.entities.items():
+            # Once a type is redact it stays redact; otherwise take this profile's action.
             if actions.get(entity_type) != "redact":
                 actions[entity_type] = action
     return EffectivePolicy(
         profiles=tuple(sorted((p.id, p.version) for p in profiles)),
         actions=dict(sorted(actions.items())),
+        # The shortest lifetime wins, so adding a profile can never lengthen it.
         max_ttl_seconds=min(default_ttl_seconds, *(p.max_ttl_seconds for p in profiles)),
         uncovered_entity_types=tuple(sorted(t for t in actions if t not in covered)),
     )

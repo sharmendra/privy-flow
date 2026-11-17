@@ -71,6 +71,7 @@ def _store_mappings(
     if snapshot is None:
         raise _not_ready()
     policy = _resolver(request).policy_for(tenant_id)
+    # Safe metadata saved with the record: which profiles and settings version applied.
     profiles = {
         "profiles": [{"id": i, "version": v} for i, v in policy.profiles],
         "settings_version": snapshot.version,
@@ -99,7 +100,7 @@ def _store_mappings(
 def _sanitize_and_store(
     request: Request, tenant_id: str, body: SanitizationRequest
 ) -> SanitizationResponse:
-    policy = _resolver(request).policy_for(tenant_id)
+    policy = _resolver(request).policy_for(tenant_id)  # the calling tenant's own policy
     result = sanitize_text(body.text, policy)
     if len(result.mappings) > MAX_MAPPINGS:
         # More distinct values than the internal API can return for one reference. Refusing
@@ -129,6 +130,7 @@ def _sanitize_and_store(
 async def create_sanitization(
     request: Request, response: Response, tenant_id: Tenant
 ) -> SanitizationResponse:
+    # The API key was already checked by the `Tenant` dependency, before the body is read.
     body = await _parse_request(request)
     if body.policy_id != _EFFECTIVE_POLICY_ID:
         raise ApiError(422, "unsupported_policy", "The requested policy is not supported.")

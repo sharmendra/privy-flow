@@ -20,6 +20,7 @@ from app.core.size_limit import RequestSizeLimitMiddleware
 async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Load settings, the API keys and the internal client once. A failure at any step leaves
     the service alive but not ready."""
+    # Start with everything unset. Readiness checks these, so a failed load means "not ready".
     app.state.settings = None
     app.state.authenticator = None
     app.state.sanitization_client = None
@@ -27,6 +28,7 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
         settings = load_settings()
         api_keys = parse_api_keys(settings.api_keys.get_secret_value())
         authenticator = ApiKeyAuthenticator(api_keys)
+        # The secret must differ from every client key, so a client key cannot call internal routes.
         secret = parse_service_secret(settings.service_secret.get_secret_value(), api_keys.values())
         client = SanitizationClient(
             str(settings.sanitization_base_url), secret, settings.internal_client_timeout_seconds
@@ -34,11 +36,13 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
     except Exception as exc:
         log_event("settings_load_failed", logging.ERROR, error_category=type(exc).__name__)
     else:
+        # Publish the objects only after every step worked.
         app.state.settings = settings
         app.state.authenticator = authenticator
         app.state.sanitization_client = client
         log_event("settings_loaded")
     yield
+    # Shutdown: close the HTTP client.
     client_in_use: SanitizationClient | None = getattr(app.state, "sanitization_client", None)
     if client_in_use is not None:
         await client_in_use.aclose()

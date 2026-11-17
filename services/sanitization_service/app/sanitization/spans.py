@@ -35,9 +35,11 @@ def plan_spans(
 ) -> list[MaskSpan]:
     """Spans to mask, in text order and without overlaps."""
     active = PILOT_RECOGNIZERS if recognizers is None else recognizers
+    # Only look for types the policy names, so an unlisted type cannot hide a listed one.
     detections = detect(text, active, entity_types=policy.actions.keys())
     planned: list[MaskSpan] = []
     for span in resolve_overlaps(detections, _priority()):
+        # If any span this one beat was redact, this span is redact too (the stricter action).
         redact = any(policy.actions[t] == "redact" for t in span.overlapped_types)
         planned.append(
             MaskSpan(span.entity_type, span.start, span.end, "redact" if redact else "placeholder")

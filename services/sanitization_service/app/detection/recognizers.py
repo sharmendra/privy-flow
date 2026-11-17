@@ -102,15 +102,18 @@ class IpAddressRecognizer:
     entity_type = "IP_ADDRESS"
 
     def find(self, text: str) -> list[Detection]:
+        # IPv6 first: each candidate is confirmed by the standard library parser.
         v6: list[tuple[int, int]] = []
         for match in _IPV6_CANDIDATE.finditer(text):
             candidate = match.group(0)
             if ":" not in candidate:
                 continue
+            # Try the candidate as is, then without trailing sentence punctuation.
             for stripped in (candidate, candidate.rstrip("."), candidate.rstrip(".:")):
                 if _is_ipv6(stripped):
                     v6.append((match.start(), match.start() + len(stripped)))
                     break
+        # IPv4 next, skipping any inside an IPv6 match (such as ::ffff:192.0.2.1).
         spans = set(v6)
         for match in _IPV4.finditer(text):
             if not any(s < match.end() and match.start() < e for s, e in v6):
@@ -138,6 +141,7 @@ Group = tuple[int, int]  # offsets of one run of digits
 
 
 def luhn_valid(digits: str) -> bool:
+    # Luhn: from the right, double every second digit, subtract 9 if over 9, and sum.
     total = 0
     for index, char in enumerate(reversed(digits)):
         value = int(char)
@@ -170,6 +174,7 @@ class CardRecognizer:
         return found
 
     def _cards_in_run(self, text: str, groups: list[Group]) -> list[Detection]:
+        # Try every window of digit groups as a possible card number.
         candidates: list[tuple[int, int, int]] = []  # (digit count, first group, last group)
         for first in range(len(groups)):
             digits = 0
@@ -181,6 +186,7 @@ class CardRecognizer:
                     break
                 if digits >= _CARD_MIN_DIGITS and _checksum_ok(text, groups[first], groups[last]):
                     candidates.append((digits, first, last))
+        # Prefer longer cards, and never let two chosen cards share a group of digits.
         taken: set[int] = set()
         chosen: list[Detection] = []
         for _, first, last in sorted(candidates, key=lambda c: (-c[0], c[1])):

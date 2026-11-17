@@ -83,6 +83,7 @@ class MappingRepository:
     def find_active(
         self, digest: bytes, tenant_id: str, request_scope_id: str, now: datetime
     ) -> StoredMappingRecord | None:
+        # Every condition must hold: digest, tenant, scope, not expired, revoked or deleted.
         statement = select(MappingRecord).where(
             MappingRecord.credential_digest == digest,
             MappingRecord.tenant_id == tenant_id,
@@ -99,6 +100,7 @@ class MappingRepository:
                 id=row.id,
                 tenant_id=row.tenant_id,
                 request_scope_id=row.request_scope_id,
+                # The driver may return a memoryview; convert to plain bytes.
                 ciphertext=bytes(row.ciphertext),
                 nonce=bytes(row.nonce),
                 encryption_alg=row.encryption_alg,

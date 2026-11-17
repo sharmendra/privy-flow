@@ -23,6 +23,7 @@ async def live() -> dict[str, str]:
 def ready(request: Request) -> JSONResponse:
     """Ready means the startup settings, keys and API keys loaded and the database answers."""
     try:
+        # Settings, vault and API keys all load at startup; any missing means not ready.
         state = request.app.state
         settings_loaded = (
             getattr(state, "settings_snapshot", None) is not None
@@ -37,6 +38,7 @@ def ready(request: Request) -> JSONResponse:
             correlation_id=request.state.correlation_id,
             error_category=type(exc).__name__,
         )
+        # Only the error category is logged. The failure counts as not ready.
         settings_loaded = reachable = False
     healthy = settings_loaded and reachable
     return JSONResponse(_OK if healthy else _UNAVAILABLE, status_code=200 if healthy else 503)

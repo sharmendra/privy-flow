@@ -50,6 +50,7 @@ def restore(
     restored = 0
     unmatched = 0
 
+    # Walk the placeholder-shaped tokens left to right. Text between tokens is copied as it is.
     for match in PLACEHOLDER_SHAPE.finditer(sanitized):
         text_before = sanitized[position : match.start()]
         size = _grow(size, text_before, max_output_bytes)
@@ -58,6 +59,7 @@ def restore(
         token = match.group(0)
         value = mappings.get(token)
         if value is None:
+            # Right shape but not in the authorized mapping: leave it and count it.
             unmatched += 1
             replacement = token
         else:
@@ -67,6 +69,7 @@ def restore(
         parts.append(replacement)
         position = match.end()
 
+    # Text after the last token. Only the size check matters here; the total is not needed.
     tail = sanitized[position:]
     _grow(size, tail, max_output_bytes)
     parts.append(tail)

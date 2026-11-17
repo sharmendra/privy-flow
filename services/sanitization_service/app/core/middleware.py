@@ -36,15 +36,17 @@ class RequestContextMiddleware:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
+        # Reuse a valid caller ID, or make a new one. Handlers read it from the request state.
         correlation_id = _correlation_id(scope)
         scope.setdefault("state", {})["correlation_id"] = correlation_id
         started = time.perf_counter()
-        status_code = 500
+        status_code = 500  # replaced by the real status when the response starts
         error_category: str | None = None
         response_started = False
 
         async def send_with_header(message: Message) -> None:
             nonlocal status_code, response_started
+            # Add the correlation ID header to every response, errors included.
             if message["type"] == "http.response.start":
                 response_started = True
                 status_code = message["status"]
@@ -54,10 +56,13 @@ class RequestContextMiddleware:
         try:
             await self.app(scope, receive, send_with_header)
         except Exception as exc:
+            # Only the exception class name is kept. The message could hold sensitive text.
             error_category = type(exc).__name__
             if response_started:
+                # Too late for a clean 500 body; log and let the server close the connection.
                 self._log(scope, correlation_id, status_code, started, error_category)
                 raise
+            # Nothing sent yet, so answer with the standard 500 body.
             await internal_error(correlation_id)(scope, receive, send_with_header)
         self._log(scope, correlation_id, status_code, started, error_category)
 
@@ -69,6 +74,7 @@ class RequestContextMiddleware:
         started: float,
         error_category: str | None,
     ) -> None:
+        # Log the route template (/api/v1/x), never the raw path or query string.
         route: Any = scope.get("route")
         fields: dict[str, object] = {
             "correlation_id": correlation_id,

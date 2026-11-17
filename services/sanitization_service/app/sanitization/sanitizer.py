@@ -44,17 +44,19 @@ def apply_spans(text: str, spans: Sequence[MaskSpan]) -> SanitizationResult:
     """
     _check_spans(text, spans)
     namer = PlaceholderNamer(text)
-    placeholders: dict[tuple[str, str], str] = {}
+    placeholders: dict[tuple[str, str], str] = {}  # (type, value) to placeholder, for repeats
     mappings: dict[str, str] = {}
     parts: list[str] = []
     cursor = 0
     for span in spans:
-        parts.append(text[cursor : span.start])
+        parts.append(text[cursor : span.start])  # untouched text before the span
         if span.action == "redact":
+            # Irreversible: the value is not added to the mappings.
             parts.append(redact_marker(span.entity_type))
         else:
             value = text[span.start : span.end]
             key = (span.entity_type, value)
+            # Same type and same characters share one placeholder within this request.
             if key not in placeholders:
                 placeholders[key] = namer.placeholder(span.entity_type)
                 mappings[placeholders[key]] = value

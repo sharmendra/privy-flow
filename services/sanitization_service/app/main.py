@@ -27,15 +27,16 @@ from app.vault.vault import Vault
 async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Load settings, build the tenant policies, the vault and the API key check once. A failure
     at any step leaves the service alive but not ready, with no fallback."""
+    # Start with everything unset. Readiness checks these, so a failed load means "not ready".
     app.state.settings_snapshot = None
     app.state.policy_resolver = None
     app.state.vault = None
     app.state.authenticator = None
     app.state.service_authenticator = None
     try:
-        bootstrap = load_settings()
+        bootstrap = load_settings()  # environment and .env
         engine = get_engine(app) if bootstrap.settings_backend == "db" else None
-        snapshot = load_snapshot(bootstrap, engine)
+        snapshot = load_snapshot(bootstrap, engine)  # file or database, never both
         resolver = PolicyResolver(snapshot.content)
         vault = Vault(
             MappingRepository(get_engine(app)),
@@ -52,6 +53,7 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
     except Exception as exc:
         log_event("settings_load_failed", logging.ERROR, error_category=type(exc).__name__)
     else:
+        # Publish the objects only after every step worked.
         app.state.settings_snapshot = snapshot
         app.state.policy_resolver = resolver
         app.state.vault = vault
@@ -64,6 +66,7 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
             settings_hash=snapshot.content_hash,
         )
     yield
+    # Shutdown: release database connections.
     engine_in_use: Engine | None = getattr(app.state, "engine", None)
     if engine_in_use is not None:
         engine_in_use.dispose()

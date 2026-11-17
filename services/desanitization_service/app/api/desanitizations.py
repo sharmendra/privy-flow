@@ -60,16 +60,21 @@ async def _parse_request(request: Request) -> DesanitizationRequest:
 async def create_desanitization(
     request: Request, response: Response, tenant_id: Tenant
 ) -> DesanitizationResponse:
+    # The API key was already checked by the `Tenant` dependency, before the body is read.
     body = await _parse_request(request)
     client: SanitizationClient | None = getattr(request.app.state, "sanitization_client", None)
     settings = getattr(request.app.state, "settings", None)
     if client is None or settings is None:
+        # Startup failed to load settings or keys: alive but not ready.
         raise ApiError(503, "dependency_unavailable", "The service is not ready.")
     # The response carries restored text, so it must not be cached.
     response.headers["Cache-Control"] = "no-store"
     correlation_id = str(request.state.correlation_id)
+    # A value that cannot be a reference gets the same 404 as an unknown one, and the
+    # Sanitization Service is never called for it.
     if not RESTORE_REFERENCE_PATTERN.fullmatch(body.restore_reference):
         raise _not_found()
+    # Fetch the mapping over the internal API. The tenant comes from the API key, never the body.
     try:
         mappings = await client.retrieve(
             body.restore_reference, tenant_id, body.request_scope_id, correlation_id
@@ -77,6 +82,7 @@ async def create_desanitization(
     except ReferenceNotFoundError:
         raise _not_found() from None
     except SanitizationUnavailableError as exc:
+        # Log only the error category. The caller just learns a dependency is unavailable.
         log_event(
             "sanitization_unavailable",
             logging.WARNING,
@@ -90,6 +96,7 @@ async def create_desanitization(
         raise ApiError(
             413, "output_too_large", "The restored text is larger than the output limit."
         ) from None
+    # Audit line: counts and an opaque tenant reference only, never text, values or the reference.
     log_event(
         "restoration_completed",
         correlation_id=correlation_id,

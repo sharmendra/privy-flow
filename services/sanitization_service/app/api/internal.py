@@ -48,6 +48,7 @@ def _retrieve(request: Request, body: MappingRetrievalRequest) -> MappingRetriev
         raise ApiError(503, "dependency_unavailable", "The service is not ready.")
     correlation_id = request.state.correlation_id
     try:
+        # Needs the reference, tenant and scope to match one active record.
         mappings = vault.retrieve(body.restore_reference, body.tenant_id, body.request_scope_id)
     except MappingIntegrityError as exc:
         # A row that fails authentication must not look different from a miss to the caller.
@@ -70,6 +71,7 @@ def _retrieve(request: Request, body: MappingRetrievalRequest) -> MappingRetriev
             503, "dependency_unavailable", "A required dependency is unavailable."
         ) from None
     if mappings is None:
+        # Unknown, expired, revoked, wrong tenant or wrong scope all look the same.
         raise _not_found()
     return MappingRetrievalResponse(
         mappings=[MappingItem(placeholder=p, value=v) for p, v in mappings.items()],

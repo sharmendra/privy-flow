@@ -70,20 +70,23 @@ class SanitizationClient:
             "request_scope_id": request_scope_id,
         }
         headers = {SERVICE_SECRET_HEADER: self._secret, CORRELATION_HEADER: correlation_id}
-        category = "Unknown"
+        category = "Unknown"  # the last retryable failure, reported if every attempt fails
         for attempt in range(self._max_retries + 1):
             if attempt:
-                await asyncio.sleep(self._retry_delay)
+                await asyncio.sleep(self._retry_delay)  # short pause between attempts
             try:
                 response = await self._client.post(RETRIEVE_PATH, json=body, headers=headers)
             except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+                # The request never reached the service, so trying again is safe.
                 category = type(exc).__name__
                 continue
             except httpx.HTTPError as exc:
+                # Anything else, such as a read timeout, is not retried.
                 raise SanitizationUnavailableError(type(exc).__name__) from None
             if response.status_code == 503:
                 category = "ServiceUnavailable"
                 continue
+            # Any other status is final: success, not found, or a failure to report.
             return _interpret(response)
         raise SanitizationUnavailableError(category)
 
@@ -101,6 +104,7 @@ def _interpret(response: httpx.Response) -> dict[str, str]:
         raise SanitizationUnavailableError("InvalidResponse") from None
     mappings: dict[str, str] = {}
     for item in parsed.mappings:
+        # One placeholder with two different values is an inconsistent answer, so it is refused.
         if mappings.setdefault(item.placeholder, item.value) != item.value:
             raise SanitizationUnavailableError("InvalidResponse")
     return mappings

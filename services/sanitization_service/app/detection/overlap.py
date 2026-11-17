@@ -33,13 +33,14 @@ def _winners_overlapping(winners: list[Detection], starts: list[int], span: Dete
 def resolve_overlaps(
     detections: Iterable[Detection], priority: Mapping[str, int]
 ) -> list[ResolvedSpan]:
+    # Best spans first: longest, then higher priority, then earliest. Empty spans are ignored.
     ordered = sorted(
         (d for d in detections if d.end > d.start),
         key=lambda d: (-(d.end - d.start), -priority.get(d.entity_type, 0), d.start, d.entity_type),
     )
-    winners: list[Detection] = []
+    winners: list[Detection] = []  # accepted spans, sorted by start, never overlapping
     starts: list[int] = []
-    dropped: list[Detection] = []
+    dropped: list[Detection] = []  # losers, kept to find what each winner overlapped
     for span in ordered:
         if _winners_overlapping(winners, starts, span):
             dropped.append(span)
@@ -47,6 +48,7 @@ def resolve_overlaps(
             position = bisect_right(starts, span.start)
             winners.insert(position, span)
             starts.insert(position, span.start)
+    # Each winner remembers the types it beat, so the policy can pick the strictest action.
     overlapped = [{w.entity_type} for w in winners]
     for span in dropped:
         for index in _winners_overlapping(winners, starts, span):
