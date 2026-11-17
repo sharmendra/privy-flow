@@ -1,0 +1,10 @@
+Support ticket 4821 (synthetic sample)
+
+Alice Morgan wrote to support@example.com on Monday. She asked us to call her on
++1 202-555-0143 or reach her colleague at ben.carter@example.com.
+
+Our monitoring flagged server 192.0.2.10 at 09:14. The same address 192.0.2.10 failed
+again at 09:41, and a second host, 198.51.100.7, timed out.
+
+For the claim form the customer gave SSN 900-12-3456 and a card ending 1111.
+Please reply to support@example.com when the case is closed.

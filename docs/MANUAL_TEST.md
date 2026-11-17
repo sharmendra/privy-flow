@@ -1,83 +1,20 @@
 # PrivyFlow — Manual Test Guide
 
-Run PrivyFlow on your machine and check each behavior by hand. All commands are PowerShell (Windows PowerShell 5.1 or PowerShell 7). All test data is synthetic.
+Test PrivyFlow by hand with a Jupyter notebook. You start the two services, open `notebooks/manual_test.ipynb`, and run its cells one at a time. Each cell prints `PASS` or `FAIL`. All test data is synthetic, and no secret is printed.
 
-Each step says what to run and what you should see. If a result differs, stop and note the step number.
+If a result differs from what the step says, stop and note the step number.
 
 ## What you need
 
 - PostgreSQL running locally, with a database named `privyflow` and an admin login you know.
-- `uv` installed. Run commands from the repository root.
+- `uv` installed, and VS Code or Cursor with the Jupyter extension. Commands run from the repository root in PowerShell.
 - The demo tenants from `config/settings.json`:
-  - `tenant-demo-a` uses the `gdpr` profile. It masks EMAIL, PHONE and IP_ADDRESS (the types PrivyFlow can detect today).
+  - `tenant-demo-a` uses the `gdpr` profile. It masks EMAIL, PHONE and IP_ADDRESS.
   - `tenant-demo-b` uses `gdpr` and `hipaa`. It also masks US_SSN, and its restore references last 1800 seconds.
 
-Detection is limited to six recognizers (EMAIL, PHONE, FINANCIAL, IN_PAN, IP_ADDRESS, US_SSN). Names such as "Alice" are not detected, and that is expected.
+PrivyFlow detects EMAIL, PHONE, FINANCIAL, IN_PAN, IP_ADDRESS and US_SSN only. Names such as "Alice" are not detected, and that is expected.
 
-## Choose how to run it
-
-Do Part 1 (setup) first, whichever way you choose. Then pick one:
-
-| Option | Best for | Covers |
-|---|---|---|
-| A. Script file | One command, a pass or fail line for each check | Parts 2 to 7 |
-| B. Postman | Clicking through requests and seeing each response | Parts 2 to 7 |
-| C. PowerShell by hand | Learning each step, copying single commands | Parts 2 to 9 |
-
-Parts 8 (logs and database) and 9 (service down) are always done by hand, because they need you to look at the service windows, the database, or stop a process. Part 10 is the automated test suites.
-
-### Option A. Run the script file
-
-After Part 1 (services running in windows A and B), open a third window in the repository root:
-
-```powershell
-uv run scripts/manual_test.py
-```
-
-The script reads the keys and the service secret from the two `.env` files itself, so you paste nothing and nothing secret is printed. If your services run on other ports, add `--san-url http://127.0.0.1:PORT` and `--desan-url http://127.0.0.1:PORT`.
-
-Expected: one `PASS` line for each check, ending with `N passed, 0 failed`, and exit code 0 (`echo $LASTEXITCODE` shows it). A `FAIL` line names the check and the HTTP status received.
-
-Other results:
-
-- `Cannot connect`: the services are not running (step 1.4). Exit code 2.
-- `... is not set`: run `uv run scripts/gen_local_secrets.py --add-missing-secrets` (step 1.2). Exit code 2.
-
-You can run it as often as you like. Each run uses new request scopes.
-
-### Option B. Run in Postman
-
-Two files are in `docs\postman\`:
-
-- `PrivyFlow.postman_collection.json`: 36 requests in six folders (Health, Sanitization, Restoration, Refusals, Tenant policies, Internal API). Each request has checks that show green or red in the Test Results tab.
-- `PrivyFlow.postman_environment.json`: the URLs and five empty secret values.
-
-Steps:
-
-1. In Postman choose Import and select both files.
-2. Open Environments, select `PrivyFlow local`, and fill in the five empty values from the `.env` files (open them with `notepad services\sanitization_service\.env` and `notepad services\desanitization_service\.env`):
-
-   | Environment value | Where it comes from |
-   |---|---|
-   | `san_key_a` | `PRIVYFLOW_SAN_API_KEYS` in the Sanitization `.env`, the value for `tenant-demo-a` |
-   | `san_key_b` | the same line, the value for `tenant-demo-b` |
-   | `desan_key_a` | `PRIVYFLOW_DESAN_API_KEYS` in the De-sanitization `.env`, the value for `tenant-demo-a` |
-   | `desan_key_b` | the same line, the value for `tenant-demo-b` |
-   | `service_secret` | `PRIVYFLOW_DESAN_SERVICE_SECRET` in the De-sanitization `.env` |
-
-   Copy only the value, without the quotes. Save the environment, then pick `PrivyFlow local` in the environment menu at the top right.
-3. Run everything: right-click the collection, choose Run collection, keep the order, and select Run. All requests should pass. Order matters: the second request in `2. Sanitization` saves the restore reference that later folders use.
-4. Or run one request at a time. Run `2. Sanitization` > `Sanitize the sample text` first, then any other request.
-
-Expected: every test is green. The `Oversized body` request sends 300000 characters, so it can take a moment.
-
-Keep the filled-in environment private: do not export it or share it, because it holds your keys.
-
-### Option C. PowerShell by hand
-
-Use the steps in Parts 2 to 9 below, including the helper in step 1.5.
-
-## Part 1. Setup (once)
+## Part 1. Set up the services (once)
 
 ### Step 1.1. Install
 
@@ -85,7 +22,7 @@ Use the steps in Parts 2 to 9 below, including the helper in step 1.5.
 uv sync --all-groups
 ```
 
-Expected: finishes without errors.
+Expected: finishes without errors. This also installs the notebook kernel.
 
 ### Step 1.2. Create the local settings files
 
@@ -102,350 +39,144 @@ uv run scripts/gen_local_secrets.py --admin-url "postgresql+psycopg://USER:PASSW
 uv run scripts/create_db_roles.py
 ```
 
-Expected: the files exist and `config\settings.json` exists. Do not commit or share the `.env` files; they hold secrets.
+Expected: both `.env` files and `config\settings.json` exist. Do not commit or share the `.env` files.
 
 ### Step 1.3. Create the database tables
 
-Use the same admin URL as above, for this shell only:
+Use the same admin URL, for this shell only:
 
 ```powershell
 $env:PRIVYFLOW_SAN_MIGRATION_DATABASE_URL = "postgresql+psycopg://USER:PASSWORD@localhost:5432/privyflow"
 uv run alembic -c services/sanitization_service/alembic.ini upgrade head
 ```
 
-Expected: the output ends with the migrations `0001` and `0002` applied (or no output if they were applied before).
+Expected: migrations `0001` and `0002` are applied (no output if they were applied before).
 
 ### Step 1.4. Start both services
 
-Open two more PowerShell windows in the repository root. Keep `--no-access-log` so request details stay out of the logs.
+Open two PowerShell terminals in the repository root and keep them open. `--no-access-log` keeps request details out of the logs.
 
-Window A, Sanitization (port 8001):
+Terminal A, Sanitization (port 8001):
 
 ```powershell
 uv run uvicorn app.main:app --app-dir services/sanitization_service --port 8001 --no-access-log
 ```
 
-Window B, De-sanitization (port 8002):
+Terminal B, De-sanitization (port 8002):
 
 ```powershell
 uv run uvicorn app.main:app --app-dir services/desanitization_service --port 8002 --no-access-log
 ```
 
-Expected in each window: a `settings_loaded` log line and "Application startup complete". If you see `settings_load_failed`, a secret in that service's `.env` is missing or malformed.
-
-### Step 1.5. Load the keys and a helper into your test window
-
-Only for Option C (by hand). Options A and B do not need this step.
-
-In your main window, paste this whole block. It reads the keys from the `.env` files into variables without printing them.
-
-```powershell
-function Get-EnvJson($file, $name) {
-    $line = Get-Content $file | Where-Object { $_ -like "$name=*" }
-    ($line.Substring($line.IndexOf('=') + 1).Trim("'") | ConvertFrom-Json)
-}
-function Get-EnvValue($file, $name) {
-    $line = Get-Content $file | Where-Object { $_ -like "$name=*" }
-    $line.Substring($line.IndexOf('=') + 1).Trim("'")
-}
-$sanEnv   = "services\sanitization_service\.env"
-$desanEnv = "services\desanitization_service\.env"
-$sanKeys   = Get-EnvJson $sanEnv "PRIVYFLOW_SAN_API_KEYS"
-$desanKeys = Get-EnvJson $desanEnv "PRIVYFLOW_DESAN_API_KEYS"
-$sanA   = @{ "X-API-Key" = $sanKeys.'tenant-demo-a' }
-$sanB   = @{ "X-API-Key" = $sanKeys.'tenant-demo-b' }
-$desanA = @{ "X-API-Key" = $desanKeys.'tenant-demo-a' }
-$desanB = @{ "X-API-Key" = $desanKeys.'tenant-demo-b' }
-$svc    = @{ "X-Service-Secret" = (Get-EnvValue $desanEnv "PRIVYFLOW_DESAN_SERVICE_SECRET") }
-$SAN = "http://127.0.0.1:8001"
-$DESAN = "http://127.0.0.1:8002"
-
-# Sends a request and prints the status code and body, also for errors.
-function Call($method, $url, $headers, $body) {
-    try {
-        $p = @{ Method = $method; Uri = $url; Headers = $headers; ContentType = "application/json"; UseBasicParsing = $true }
-        if ($body) { $p.Body = ($body | ConvertTo-Json -Compress) }
-        $r = Invoke-WebRequest @p
-        "HTTP $($r.StatusCode)"
-        $r.Content
-    } catch {
-        "HTTP $([int]$_.Exception.Response.StatusCode)"
-        $_.ErrorDetails.Message
-    }
-}
-```
-
-Expected: no output. If `$sanA` shows an empty key, the tenant is missing from the `.env` file; rerun step 1.2.
-
-## Part 2. Health
-
-### Step 2.1. Liveness and readiness
-
-```powershell
-Call GET "$SAN/health/live"
-Call GET "$SAN/health/ready"
-Call GET "$DESAN/health/live"
-Call GET "$DESAN/health/ready"
-```
-
-Expected: each prints `HTTP 200` and `{"status":"ok"}`. A `503` on `ready` means a setting or the database failed to load; check that service's window.
-
-## Part 3. Sanitization (tenant-demo-a)
-
-### Step 3.1. See the tenant's policy
-
-```powershell
-Call GET "$SAN/api/v1/policies" $sanA
-```
-
-Expected: `HTTP 200`, `policy_id` is `effective`, profile `gdpr`, `max_ttl_seconds` 3600. `uncovered_entity_types` lists types such as PERSON that the policy names but PrivyFlow cannot detect yet.
-
-### Step 3.2. Sanitize a text
-
-```powershell
-$original = "Contact Alice at alice@example.com or +1 202-555-0143. Server 192.0.2.10 reported the issue."
-$scope = "scope-001"
-$out = Call POST "$SAN/api/v1/sanitizations" $sanA @{ text = $original; request_scope_id = $scope; policy_id = "effective" }
-$out
-```
-
-Expected: `HTTP 200` and a body with:
-
-- `sanitized_text`: `Contact Alice at [EMAIL_001] or [PHONE_001]. Server [IP_ADDRESS_001] reported the issue.`
-- `restore_reference`: starts with `pf1_` (47 characters in all)
-- `entity_count`: 3
-- `profiles_applied`: `["gdpr"]`
-- `expires_at`: about one hour from now
-
-"Alice" is untouched on purpose.
-
-Save the reference for the next steps:
-
-```powershell
-$ref = (($out | Select-Object -Skip 1) | ConvertFrom-Json).restore_reference
-$ref.Length
-```
-
-Expected: `47`.
-
-### Step 3.3. Repeated values
-
-```powershell
-Call POST "$SAN/api/v1/sanitizations" $sanA @{ text = "bob@example.com wrote to bob@example.com and carol@example.com"; request_scope_id = "scope-002"; policy_id = "effective" }
-```
-
-Expected: `[EMAIL_001] wrote to [EMAIL_001] and [EMAIL_002]`, `entity_count` 3. The same value shares one placeholder.
-
-### Step 3.4. Text with nothing to mask
-
-```powershell
-Call POST "$SAN/api/v1/sanitizations" $sanA @{ text = "Nothing sensitive here."; request_scope_id = "scope-003"; policy_id = "effective" }
-```
-
-Expected: the text unchanged, `restore_reference` null, `expires_at` null, `entity_count` 0.
-
-### Step 3.5. A literal placeholder in the input is not confused with a real one
-
-```powershell
-Call POST "$SAN/api/v1/sanitizations" $sanA @{ text = "The code [EMAIL_001] is literal. Mail dave@example.com"; request_scope_id = "scope-004"; policy_id = "effective" }
-```
-
-Expected: the sanitized text keeps `[EMAIL_001]` and uses `[EMAIL_002]` for Dave's address.
-
-## Part 4. Restoration (the round trip)
-
-### Step 4.1. Restore with the correct key, tenant and scope
-
-```powershell
-$restore = Call POST "$DESAN/api/v1/desanitizations" $desanA @{ sanitized_text = "Contact Alice at [EMAIL_001] or [PHONE_001]. Server [IP_ADDRESS_001] reported the issue."; restore_reference = $ref; request_scope_id = $scope }
-$restore
-```
-
-Expected: `HTTP 200`, `restored_count` 3, `unmatched_placeholder_count` 0, and `restored_text` equal to the original.
-
-Check it is exact:
-
-```powershell
-(($restore | Select-Object -Skip 1) | ConvertFrom-Json).restored_text -ceq $original
-```
-
-Expected: `True`.
-
-### Step 4.2. Unknown and altered placeholders are left alone
-
-```powershell
-Call POST "$DESAN/api/v1/desanitizations" $desanA @{ sanitized_text = "[EMAIL_001] [EMAIL_999] [EMAIL_0001] [email_001] [EMAIL_REDACTED]"; restore_reference = $ref; request_scope_id = $scope }
-```
-
-Expected: `restored_text` is `alice@example.com [EMAIL_999] [EMAIL_0001] [email_001] [EMAIL_REDACTED]`, `restored_count` 1, `unmatched_placeholder_count` 2 (`[EMAIL_999]` and `[EMAIL_0001]`). The other two do not have the placeholder shape and are not counted.
-
-### Step 4.3. Reuse within the lifetime
-
-Run step 4.1 again.
-
-Expected: it succeeds again. Reuse is allowed until the reference expires (one-time use is not built).
-
-## Part 5. Things that must be refused
-
-Each of these must fail safely. The body is always `{"error": {"code": ..., "message": ..., "correlation_id": ...}}` with fixed text, and never contains your input.
-
-### Step 5.1. Authentication
-
-```powershell
-$body = @{ text = "x@example.com"; request_scope_id = "s1"; policy_id = "effective" }
-Call POST "$SAN/api/v1/sanitizations" @{} $body
-Call POST "$SAN/api/v1/sanitizations" @{ "X-API-Key" = "wrong-key-wrong-key-wrong-key" } $body
-Call POST "$SAN/api/v1/sanitizations" $desanA $body
-```
-
-Expected: all three `HTTP 401`, code `unauthorized`. The third shows a De-sanitization key does not work on the Sanitization Service.
-
-```powershell
-$rbody = @{ sanitized_text = "[EMAIL_001]"; restore_reference = $ref; request_scope_id = $scope }
-Call POST "$DESAN/api/v1/desanitizations" @{} $rbody
-Call POST "$DESAN/api/v1/desanitizations" $sanA $rbody
-```
-
-Expected: both `HTTP 401`. A restore reference alone never authorizes restoration, and a Sanitization key does not work here.
-
-### Step 5.2. Wrong tenant
-
-```powershell
-Call POST "$DESAN/api/v1/desanitizations" $desanB $rbody
-```
-
-Expected: `HTTP 404`, code `restore_reference_not_found`, message "The restore reference was not found."
-
-### Step 5.3. Wrong request scope
-
-```powershell
-Call POST "$DESAN/api/v1/desanitizations" $desanA @{ sanitized_text = "[EMAIL_001]"; restore_reference = $ref; request_scope_id = "some-other-scope" }
-```
-
-Expected: the same `HTTP 404`.
-
-### Step 5.4. Unknown and malformed references
-
-```powershell
-$fake = "pf1_" + ("A" * 43)
-Call POST "$DESAN/api/v1/desanitizations" $desanA @{ sanitized_text = "[EMAIL_001]"; restore_reference = $fake; request_scope_id = $scope }
-Call POST "$DESAN/api/v1/desanitizations" $desanA @{ sanitized_text = "[EMAIL_001]"; restore_reference = "not-a-reference"; request_scope_id = $scope }
-```
-
-Expected: both `HTTP 404`, identical to steps 5.2 and 5.3. A caller cannot tell "does not exist" from "not yours".
-
-### Step 5.5. Bad input
-
-```powershell
-Call POST "$SAN/api/v1/sanitizations" $sanA @{ text = ""; request_scope_id = "s1"; policy_id = "effective" }
-Call POST "$SAN/api/v1/sanitizations" $sanA @{ text = "x"; request_scope_id = "s1"; policy_id = "other" }
-Call POST "$SAN/api/v1/sanitizations" $sanA @{ text = "x"; request_scope_id = "s1"; policy_id = "effective"; tenant_id = "tenant-demo-b" }
-Call POST "$SAN/api/v1/sanitizations" $sanA @{ text = "x"; request_scope_id = "bad scope!"; policy_id = "effective" }
-```
-
-Expected: `HTTP 422` for all four. Codes: `validation_error`, `unsupported_policy`, `validation_error` (a body cannot name a tenant), `validation_error`.
-
-### Step 5.6. Oversized request
-
-```powershell
-Call POST "$SAN/api/v1/sanitizations" $sanA @{ text = ("a" * 300000); request_scope_id = "s1"; policy_id = "effective" }
-```
-
-Expected: `HTTP 413`, code `payload_too_large` (the limit is 262144 bytes).
-
-### Step 5.7. Unknown route and wrong method
-
-```powershell
-Call GET "$SAN/nope"
-Call GET "$SAN/api/v1/sanitizations" $sanA
-```
-
-Expected: `HTTP 404` code `not_found`, then `HTTP 405` code `method_not_allowed`.
-
-## Part 6. Tenant policies differ (tenant-demo-b)
-
-### Step 6.1. A US SSN under each tenant
-
-Synthetic SSN `900-12-3456` (the 900 range is never a real number).
-
-```powershell
-$ssn = @{ text = "SSN 900-12-3456 and mail erin@example.com"; request_scope_id = "scope-ssn"; policy_id = "effective" }
-Call POST "$SAN/api/v1/sanitizations" $sanA $ssn
-Call POST "$SAN/api/v1/sanitizations" $sanB $ssn
-```
-
-Expected:
-
-- Tenant A: the SSN stays in the text (`gdpr` does not name US_SSN); only the email becomes `[EMAIL_001]`.
-- Tenant B: `SSN [US_SSN_001] and mail [EMAIL_001]`, `profiles_applied` lists `gdpr` and `hipaa`, and `expires_at` is about 30 minutes ahead (the shorter `hipaa` lifetime wins).
-
-### Step 6.2. A card number is not masked by these tenants
-
-```powershell
-Call POST "$SAN/api/v1/sanitizations" $sanA @{ text = "Card 4111 1111 1111 1111"; request_scope_id = "scope-card"; policy_id = "effective" }
-```
-
-Expected: the text is unchanged. Card detection exists, but neither demo tenant's profiles name it (`pci_dss` does). This shows masking follows the tenant's policy.
-
-## Part 7. Internal API (service to service)
-
-### Step 7.1. Only the De-sanitization Service secret works
-
-```powershell
-$ibody = @{ restore_reference = $ref; tenant_id = "tenant-demo-a"; request_scope_id = $scope }
-Call POST "$SAN/internal/v1/mappings/retrieve" @{} $ibody
-Call POST "$SAN/internal/v1/mappings/retrieve" $sanA $ibody
-Call POST "$SAN/internal/v1/mappings/retrieve" $svc $ibody
-```
-
-Expected: the first two are `HTTP 401` (no credential, and a client API key). The third is `HTTP 200` with `mappings` holding the three placeholder and value pairs and `policy_id` `effective`. This is the only place values appear, and only to the service secret.
-
-```powershell
-Call POST "$SAN/internal/v1/mappings/retrieve" $svc @{ restore_reference = $ref; tenant_id = "tenant-demo-b"; request_scope_id = $scope }
-```
-
-Expected: `HTTP 404`, the same body as before.
-
-### Step 7.2. The service secret does not work on public routes
-
-```powershell
-Call POST "$SAN/api/v1/sanitizations" $svc $body
-```
-
-Expected: `HTTP 401`.
-
-## Part 8. Privacy checks
-
-### Step 8.1. Logs hold no sensitive values
-
-Look at the two service windows. Search each window for `alice@example.com`, `202-555-0143`, `192.0.2.10`, `900-12-3456`, and the value of `$ref`.
-
-Expected: none appear. Log lines hold only fields such as the route, status code, latency and correlation ID. The De-sanitization window also shows one `restoration_completed` line per success with counts and a short opaque `tenant_ref`.
-
-### Step 8.2. The database holds no plaintext (optional, needs `psql`)
+Expected in each terminal: a `settings_loaded` line and "Application startup complete". A `settings_load_failed` line means a secret in that service's `.env` is missing or malformed.
+
+If a terminal shows `[Errno 10048]` (address already in use), an earlier run still holds the port. Find it with `Get-NetTCPConnection -LocalPort 8002 | Select OwningProcess`, stop it with `Stop-Process -Id <PID>`, then start again.
+
+## Part 2. Open the notebook
+
+1. In VS Code open `notebooks/manual_test.ipynb`.
+2. Select the kernel in the top right: choose Python Environments, then the `.venv` in this repository (`.venv\Scripts\python.exe`). If it is not listed, run `uv sync --all-groups` again and reload the window.
+3. Run each cell with the play button or Shift+Enter, **in order, one at a time**. Later cells use the restore reference created in step 2.2, so do not skip ahead.
+4. Read the text above each cell: it says what the cell does and what you should see.
+5. For your own data, go to step 7: change `SOURCE_FILE` in step 7.1 to a file in the `data` folder and run steps 7.1 to 7.7 in order. Clear All Outputs (the toolbar menu) before you share or commit the notebook, because output can contain your sanitized text.
+
+If you restart the kernel, run Step 0 and step 2.2 again before any later step.
+
+## Part 3. The steps in the notebook
+
+| Notebook step | What it checks | Expected |
+|---|---|---|
+| 0. Setup | Loads the keys from the two `.env` files | `2 tenant keys loaded` for each service, then `Setup OK` |
+| 1. Health | Live and ready on both services | 4 `PASS` |
+| 2.1 Policy | Tenant A's effective policy | HTTP 200, profile `gdpr`, lifetime 3600 seconds |
+| 2.2 Sanitize | Masks the sample text and saves the reference | `Contact Alice at [EMAIL_001] or [PHONE_001]. Server [IP_ADDRESS_001] reported the issue.`, reference `pf1_` plus 43 characters (shown masked) |
+| 2.3 Repeats | The same value shares one placeholder | `[EMAIL_001] wrote to [EMAIL_001] and [EMAIL_002]` |
+| 2.4 Nothing to mask | Text with no sensitive values | Text unchanged, no reference, 0 entities |
+| 2.5 Literal placeholder | `[EMAIL_001]` already in the input | Kept as is; the real email becomes `[EMAIL_002]` |
+| 3.1 Restore | The round trip with the right key, tenant and scope | Restored text equals the original, 3 restored, 0 unmatched |
+| 3.2 Altered placeholders | Unknown and altered placeholders | Left alone; 1 restored and 2 unmatched |
+| 3.3 Reuse | Restore again within the lifetime | HTTP 200 again |
+| 4.1 Authentication | No key, wrong key, and a key for the other service | 5 `PASS`, each HTTP 401 `unauthorized` |
+| 4.2 Wrong tenant, scope, reference | Other tenant, other scope, unknown and malformed references | 4 `PASS`, each the same HTTP 404 "The restore reference was not found." |
+| 4.3 Bad input | Empty text, unsupported policy, tenant in the body, bad scope id | 4 `PASS`, each HTTP 422 |
+| 4.4 Oversized | 300000 characters | HTTP 413 `payload_too_large` |
+| 4.5 Route and method | Unknown route, wrong method | HTTP 404 `not_found`, HTTP 405 `method_not_allowed` |
+| 5. Tenant policies | Same text under tenant A and tenant B, and a card number | A leaves the SSN, B masks it, lifetime about 30 minutes, card left alone |
+| 6. Internal API | Who may retrieve mappings | Service secret only: 401, 401, 200 with 3 mappings, 404, 401 |
+| 7.1 Choose file | Sets `SOURCE_FILE` (in `data/`) and the tenant | The values are printed |
+| 7.2 Read file | Reads your file; must be in `data/`, UTF-8, under 262144 bytes | `PASS`, with characters, lines and bytes (your text is not printed) |
+| 7.3 Sanitize | Sends your whole file to the Sanitization Service | HTTP 200, values masked by type, expiry, reference shown masked |
+| 7.4 Check result | Placeholders equal the entity count, line breaks unchanged | 2 `PASS`, then a preview of the sanitized text |
+| 7.5 Save | Writes `data/output/<name>.sanitized.txt` | `PASS` and the path |
+| 7.6 Restore | Restores with the same tenant, scope and reference | 3 `PASS`, restored text equals your file exactly |
+| 7.7 Safety | Other tenant, and an altered placeholder | 2 `PASS`: HTTP 404 for the other tenant, `[EMAIL_999]` left as is |
+| 8. Summary | Counts every check | `N passed, 0 failed` |
+
+A `FAIL` line names the check and the HTTP status received. Fix the cause, run that cell again, then run the summary cell.
+
+## Part 4. Checks you do by hand
+
+These are in step 9 of the notebook.
+
+### Step 9.1. Logs hold no sensitive values
+
+In the two service terminals, search for `alice@example.com`, `202-555-0143`, `192.0.2.10`, `900-12-3456` and the restore reference.
+
+Expected: none appear. Log lines hold only fields such as the route, status code, latency and correlation ID. Terminal B also shows one `restoration_completed` line per success, with counts and a short opaque `tenant_ref`.
+
+### Step 9.2. The database holds no plaintext (optional, needs `psql`)
 
 ```powershell
 psql "postgresql://USER:PASSWORD@localhost:5432/privyflow" -c "SELECT tenant_id, request_scope_id, length(credential_digest) AS digest_bytes, encryption_alg, key_version, length(ciphertext) AS cipher_bytes, expires_at FROM mapping_records ORDER BY created_at DESC LIMIT 5;"
 psql "postgresql://USER:PASSWORD@localhost:5432/privyflow" -c "SELECT count(*) FROM mapping_records WHERE position('alice@example.com'::bytea in ciphertext) > 0;"
 ```
 
-Expected: the first shows `digest_bytes` 32, `AES-256-GCM` and key version 1, with no readable values. The second returns `0`.
+Expected: `digest_bytes` 32, `AES-256-GCM`, key version 1, and nothing readable. The second query returns `0`.
 
-## Part 9. A dependency fails
+### Step 9.3. A dependency fails
 
-### Step 9.1. Sanitization Service down
+1. Stop the Sanitization Service (Ctrl+C in terminal A).
+2. Run the next notebook cell. Expected: HTTP 503, code `dependency_unavailable`, a correlation ID and no sensitive content. It can take a few seconds because of short retries. Terminal B logs `sanitization_unavailable` with an error category only, and the service stays live.
+3. Start the Sanitization Service again (step 1.4, terminal A) and wait for `settings_loaded`.
+4. Run the last cell. Expected: HTTP 200 with the same reference, because the stored mapping survived the restart.
 
-Stop the Sanitization Service (Ctrl+C in window A), then run step 4.1 again.
+## Part 4b. Try your own text or file
 
-Expected: `HTTP 503`, code `dependency_unavailable`, a correlation ID, and no sensitive content. The call may take a few seconds because of the short retries. The De-sanitization window logs `sanitization_unavailable` with an error category only.
+`notebooks/demo.py` sanitizes your own text or file, restores it, and checks the restored text equals the original. Start both services first (step 1.4).
 
-`Call GET "$DESAN/health/live"` still returns 200, because the service stays up.
+```powershell
+uv run notebooks/demo.py                                      # the synthetic data/sample.txt
+uv run notebooks/demo.py --file data/my_notes.txt             # your own file in the data folder
+uv run notebooks/demo.py --text "Mail me at jo@example.com"   # your own text
+uv run notebooks/demo.py --file data/my_notes.txt --tenant tenant-demo-b --save-restored
+```
 
-Start the Sanitization Service again (step 1.4, window A), wait for it to load, and run step 4.1. Expected: it succeeds with the same reference, because the stored mapping survived the restart.
+Put your own files in `data/`. Only `data/sample.txt` is committed to git; everything else in `data/` is ignored, so real data is not committed by accident. The file must be UTF-8 text under 262144 bytes.
 
-## Part 10. Automated checks
+Expected output: how many values were masked and of which types, the path of the sanitized file (`data/output/<name>.sanitized.txt`), `Restored N value(s), 0 unmatched`, and `PASS  restored text equals the original exactly`. Exit code 0 means pass (`echo $LASTEXITCODE`).
 
-Close the two service windows or leave them; these do not use them.
+- The restore reference is kept in memory only. It is never printed or saved.
+- The restored text is saved only with `--save-restored`, because it holds your original values.
+- Only EMAIL, PHONE, FINANCIAL, IN_PAN, IP_ADDRESS and US_SSN are detected, and only the types in the tenant's policy are masked. Names and addresses stay in the text. If nothing is masked, the script says so and does not restore.
+- Tenant A masks EMAIL, PHONE and IP_ADDRESS. Tenant B also masks US_SSN.
+
+## Part 4c. Run the checks from a Python file
+
+`notebooks/manual_test.py` is the command-line version of notebook step 7. It reads **every** `.txt`, `.md`, `.csv` and `.log` file in `data/` as input and runs the full set of checks for each file and each tenant.
+
+```powershell
+uv run notebooks/manual_test.py                                  # all files in data/, both tenants
+uv run notebooks/manual_test.py --file data/my_notes.txt         # one file
+uv run notebooks/manual_test.py --tenant tenant-demo-b --save-restored --preview
+```
+
+For each file and tenant it checks that the file is within the size limit, the sanitize call succeeds, the placeholder count equals the entity count, line breaks are unchanged, the restore succeeds, every masked value is restored, the restored text equals the file exactly, the other tenant cannot restore it, and an altered placeholder is not substituted. A file with nothing detectable skips the restore checks.
+
+Expected: a `PASS` line for each check and `N passed, 0 failed` at the end. The exit code is 0 when everything passes, 1 when a check fails, and 2 when setup is missing (`echo $LASTEXITCODE`). Sanitized text is saved to `data/output/<name>.<tenant>.sanitized.txt`. Your text and the restore reference are never printed.
+
+## Part 5. Automated checks
+
+Optional. These do not use the running services.
 
 ```powershell
 uv run scripts/run_tests.py lint
@@ -455,7 +186,7 @@ uv run scripts/run_tests.py security
 uv run scripts/run_tests.py evaluation
 ```
 
-Expected: lint and pyright pass with no errors; the suites pass. To also run the database-backed integration and end-to-end tests, set the admin URL in this shell and run all suites:
+Expected: lint and pyright report no errors and the suites pass. To also run the database-backed integration and end-to-end tests, set the admin URL in this shell and run all suites:
 
 ```powershell
 $env:PRIVYFLOW_TEST_DATABASE_URL = "postgresql+psycopg://USER:PASSWORD@localhost:5432/privyflow"
@@ -466,24 +197,33 @@ These tests create and drop their own `pf_test_*` databases and do not touch you
 
 ## Not testable by hand
 
-- Expiry and revocation: expiry needs the lifetime to pass (30 to 60 minutes), and revocation has no endpoint yet. Both are covered by automated tests with a controlled clock.
+- Expiry and revocation: expiry needs the lifetime to pass (30 to 60 minutes) and revocation has no endpoint yet. Both are covered by automated tests with a controlled clock.
 - Rate limiting: not built in the pilot.
+
+## Troubleshooting
+
+| Symptom | Likely cause |
+|---|---|
+| Kernel not listed in VS Code | Run `uv sync --all-groups`, then reload the window and pick the repository's `.venv`. |
+| `ModuleNotFoundError` in the notebook | The kernel is not the repository's `.venv`. Change it. |
+| `Missing ...\.env` in Step 0 | Do step 1.2. |
+| `Cannot connect to http://127.0.0.1:8001` | The service is not running or uses another port. Check its terminal, or change `SAN_URL` and `DESAN_URL` in Step 0. |
+| Many `FAIL` lines with HTTP 401 | The `.env` keys do not match what the running service loaded. Restart both services after running `gen_local_secrets.py`. |
+| `FAIL` with HTTP 404 on step 3, 6 or 7 | The reference or scope is from before a kernel restart. Run step 2.2 (or 7.3 for your own file) again. |
+| HTTP 503 on `ready` | A setting or the database failed to load. Read `settings_load_failed` or the database error in that service's terminal. |
+
+## Other ways to run
+
+- Script: `uv run scripts/manual_test.py` runs the same checks as steps 1 to 6 from the command line, and prints a PASS or FAIL line for each.
+- Postman: import `docs/postman/PrivyFlow.postman_collection.json` and `PrivyFlow.postman_environment.json`, fill in the five secrets in the environment from the `.env` files, and run the collection. Keep the filled-in environment private.
 
 ## Results sheet
 
-With Option A or B, the script or Postman result covers Parts 2 to 7. Parts 8 and 9 are always by hand.
+Run the notebook once, then record the parts that are by hand.
 
 | Step | Expected | Pass or fail | Notes |
 |---|---|---|---|
-| 2.1 | All four health calls return 200 | | |
-| 3.2 | Three values masked, "Alice" kept | | |
-| 3.3 | Repeats share one placeholder | | |
-| 4.1 | Restored text equals the original | | |
-| 4.2 | Unknown and altered placeholders left alone, 2 counted | | |
-| 5.1 | Missing and wrong keys get 401 | | |
-| 5.2 to 5.4 | Wrong tenant, scope and bad references all get the same 404 | | |
-| 5.5 to 5.6 | Bad input gets 422, oversized gets 413 | | |
-| 6.1 | Policies differ by tenant | | |
-| 7.1 | Internal API accepts only the service secret | | |
-| 8.1 to 8.2 | No sensitive values in logs or the database | | |
-| 9.1 | Service down gives 503, recovers after restart | | |
+| Notebook step 8 | `N passed, 0 failed` | | |
+| 9.1 | No sensitive values in the logs | | |
+| 9.2 | No plaintext in the database | | |
+| 9.3 | Service down gives 503, recovers after restart | | |

@@ -8,7 +8,9 @@
 - Be concise: a short README and no emojis.
 - Avoid overly defensive code. Handle exceptions only when necessary. This does not relax validation, authorization, or safe-failure requirements at trust boundaries.
 - Run Python through `uv` (`uv run ...`), never bare `python3`, and write scripts so they work on Windows.
-- Use strict static typing for Python; avoid `Any` unless justified.
+- Write simple, procedural code: straight-line steps and small functions, not classes or clever abstractions.
+- Add type annotations only where they are really needed. Do not annotate every variable and parameter.
+- Pyright strict covers `services/`, `tests/` and `scripts/`. Demo and manual-test code in `notebooks/` is plain, unannotated Python and is outside the type check.
 - Keep the two service boundaries strict.
 - Separate API routing, business logic, data access, detection, cryptography, and infrastructure.
 - Use type hints for public functions and domain models.

@@ -16,3 +16,6 @@ reports/
 *.pem
 *.key
 config/settings.json
+# Your own demo files may hold real data: only the synthetic sample is committed.
+data/*
+!data/sample.txt
