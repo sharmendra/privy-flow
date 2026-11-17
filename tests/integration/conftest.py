@@ -12,6 +12,7 @@ from collections.abc import Iterator
 import pytest
 
 from tests.support.database import create_database, drop_database
+from tests.support.migrations import upgrade
 
 ADMIN_URL_ENV = "PRIVYFLOW_TEST_DATABASE_URL"
 
@@ -51,3 +52,10 @@ def empty_database_url(database_admin_url: str) -> Iterator[str]:
         yield url
     finally:
         drop_database(database_admin_url, url)
+
+
+@pytest.fixture
+def migrated_database_url(empty_database_url: str) -> str:
+    """A new database with every migration applied."""
+    upgrade(empty_database_url)
+    return empty_database_url

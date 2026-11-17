@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "tenant_profiles": {
+    "tenant-demo-a": ["gdpr"],
+    "tenant-demo-b": ["gdpr", "hipaa"]
+  },
+  "default_ttl_seconds": 3600,
+  "max_request_bytes": 262144,
+  "strict_coverage": false
+}

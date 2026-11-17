@@ -2,9 +2,9 @@
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 SERVICE_NAME = "sanitization"
@@ -18,6 +18,12 @@ class Settings(BaseSettings):
     # Runtime database role (least privilege). Migrations use a separate admin URL that the
     # running service never reads.
     database_url: SecretStr
+
+    # Bootstrap settings: where the operational settings live. Never stored in the store itself.
+    settings_backend: Literal["file", "db"] = Field(
+        default="file", validation_alias="PRIVYFLOW_SETTINGS_BACKEND"
+    )
+    settings_file: Path | None = Field(default=None, validation_alias="PRIVYFLOW_SETTINGS_FILE")
 
     @field_validator("database_url")
     @classmethod

@@ -4,25 +4,14 @@ import logging
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy import Engine
 
-from app.core.config import load_settings
 from app.core.logging import log_event
-from app.db.session import create_db_engine, database_is_reachable
+from app.db.session import database_is_reachable, get_engine
 
 router = APIRouter()
 
 _OK = {"status": "ok"}
 _UNAVAILABLE = {"status": "unavailable"}
-
-
-def _engine(request: Request) -> Engine:
-    """Create the engine on first use so a missing setting only affects readiness."""
-    state = request.app.state
-    if getattr(state, "engine", None) is None:
-        state.engine = create_db_engine(load_settings().database_url.get_secret_value())
-    engine: Engine = state.engine
-    return engine
 
 
 @router.get("/health/live")
@@ -32,8 +21,10 @@ async def live() -> dict[str, str]:
 
 @router.get("/health/ready")
 def ready(request: Request) -> JSONResponse:
+    """Ready means the startup settings loaded and the database answers."""
     try:
-        reachable = database_is_reachable(_engine(request))
+        settings_loaded = getattr(request.app.state, "settings_snapshot", None) is not None
+        reachable = database_is_reachable(get_engine(request.app))
     except Exception as exc:
         log_event(
             "readiness_failed",
@@ -41,5 +32,6 @@ def ready(request: Request) -> JSONResponse:
             correlation_id=request.state.correlation_id,
             error_category=type(exc).__name__,
         )
-        reachable = False
-    return JSONResponse(_OK if reachable else _UNAVAILABLE, status_code=200 if reachable else 503)
+        settings_loaded = reachable = False
+    healthy = settings_loaded and reachable
+    return JSONResponse(_OK if healthy else _UNAVAILABLE, status_code=200 if healthy else 503)

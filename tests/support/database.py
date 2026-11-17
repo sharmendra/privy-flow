@@ -6,6 +6,8 @@ PRIVYFLOW_TEST_DATABASE_URL or from a Testcontainers PostgreSQL (needs Docker).
 """
 
 import uuid
+from collections.abc import Sequence
+from typing import Any, LiteralString, cast
 
 import psycopg
 from psycopg import sql
@@ -32,3 +34,10 @@ def drop_database(admin_url: str, url: str) -> None:
     with psycopg.connect(to_psycopg_dsn(admin_url), autocommit=True) as conn:
         statement = sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)")
         conn.execute(statement.format(sql.Identifier(name)))
+
+
+def run_sql(
+    conn: psycopg.Connection[Any], statement: str, params: Sequence[object] | None = None
+) -> psycopg.Cursor[Any]:
+    """Run a statement built by a test. The cast is safe: tests never pass user input."""
+    return conn.execute(cast(LiteralString, statement), params)

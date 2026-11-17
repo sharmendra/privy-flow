@@ -46,6 +46,7 @@ The project documentation defines the target architecture and requirements. Do n
 | Authorization and tenant isolation | Planned |
 | Expiry and revocation | Planned |
 | Restoration logic | Planned |
+| Settings store (file and database backends, validation, audit, CLI) | Implemented and executed, pilot phase 2A (see section 4) |
 | Service foundations (both apps, health, correlation IDs, redacted logging, error body, vault table migration) | Implemented and executed, pilot phase 2 (see section 4) |
 | Test harness foundation | Implemented and executed (see section 4) |
 | Service-level tests (unit, integration, security, end-to-end) | Phase 2 tests run (health, migrations, redaction, error shape, database boundary); the rest are pending and skipped with a reason |
@@ -71,6 +72,8 @@ uv run alembic -c services/sanitization_service/alembic.ini upgrade head
 uv run uvicorn app.main:app --app-dir services/sanitization_service --port 8001 --no-access-log
 uv run uvicorn app.main:app --app-dir services/desanitization_service --port 8002 --no-access-log
 ```
+
+Settings: copy `config/settings.example.json` to `config/settings.json` (the secrets script does this), then check it with `uv run scripts/settings.py validate`. To use the database backend, run `uv run scripts/settings.py import`, set `PRIVYFLOW_SETTINGS_BACKEND=db`, and restart. `uv run scripts/gen_local_secrets.py --force` followed by `uv run scripts/create_db_roles.py` also creates the settings admin role; run the migration again afterward so it can grant that role its privileges.
 
 Keep `--no-access-log`: the default uvicorn access log prints query strings. Each service reads only its own `services/<service>/.env`. Integration tests use Testcontainers when Docker runs, or the local PostgreSQL named by `PRIVYFLOW_TEST_DATABASE_URL` (see the deviation under test evidence).
 
@@ -115,7 +118,8 @@ Not verified:
 |---|---|
 | 1. Decisions, contracts, threat model | Documentation complete 2026-11-17. One criterion open: owner review of the profile files (see below). |
 | 2. Service foundations | Implemented 2026-11-17; one criterion open pending an owner decision on the coverage gate (see "Phase 2 evidence"). |
-| 2A, 3 to 8 | Not started |
+| 2A. Settings store | Implemented 2026-11-17; one criterion open (macOS run of the CLI). |
+| 3 to 8 | Not started |
 
 Phase 1 delivered (documentation and data only, no service code, no test changes):
 
@@ -163,6 +167,32 @@ Open items for the owner:
 - Request-size limit and the 413 response are not built (phase 4).
 - The default uvicorn access log prints query strings. Services must be started with `--no-access-log`; a test checks that a real process then logs no query string, header or body.
 - `gen_local_secrets.py` generates only the runtime database password. It grows with later phases.
+
+### Phase 2A evidence (settings store)
+
+Recorded 2026-11-17, Windows, Python 3.13.13, local PostgreSQL 18.6 (same owner-approved fallback as phase 2; the Testcontainers path has not run).
+
+| Command | Result |
+|---|---|
+| `uv run scripts/run_tests.py all` (with the local database) | 177 passed, 0 failed, 56 skipped; coverage 93.82% (minimum 80%) |
+| `uv run scripts/run_tests.py lint` | Ruff check and format check passed |
+| `uv run pyright` | 0 errors, 0 warnings; no suppressions in `services`, `scripts` or `tests` |
+| `uv run scripts/run_tests.py scan` | `pip-audit`: no known vulnerabilities. Bandit on `services`: no findings. Bandit on `scripts`: the two existing low findings in `run_tests.py`. |
+| By hand on the `privyflow` database: `alembic upgrade head` (now `0002`), `scripts/settings.py validate`, `import --dry-run`, `import`, a repeated `import`, `show --backend db`, `export` | Version 1 imported once; the second import reported no change; the hash was identical for the file, the import and the export |
+| By hand: service started with the file backend, the database backend, and `PRIVYFLOW_SETTINGS_BACKEND=xml` | File and database backends returned 200 on `/health/ready` and logged the same hash (versions 0 and 1); the invalid backend returned 503 and logged only an error category |
+
+Skips are the same pending placeholders as before. None is a pass.
+
+Decisions and limits to know about:
+
+- Profile definitions stay as the versioned data files from phase 1 (SPEC 9.9). The store holds the tenant-to-profile map and the operational values, so "profiles" in Q8 is read as profile enablement.
+- The internal client timeout from Q8 is not in this store. The De-sanitization Service owns it, and it has no store.
+- `default_ttl_seconds` is limited to 60 to 3600. The 3600 ceiling is the D5 default and is my choice for "the allowed maximum"; the minimum of 60 is also mine.
+- A failed settings load keeps the process alive but not ready, rather than exiting. Readiness does not recover until the service restarts.
+- The settings tool needs a second database role. Existing local databases need `create_db_roles.py` and then `alembic upgrade head` to get it.
+- Still open from phase 2: the coverage gate on `unit` alone. `unit` has 35 passed, 20 skipped, and fails only the coverage gate.
+- Not verified: the settings CLI on macOS.
+- Not built: the effective policy resolver (phase 3), live reload, an admin API, and per-request profile selection.
 
 ## 5. Validation checklist
 

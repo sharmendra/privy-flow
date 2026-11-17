@@ -2,13 +2,15 @@
 
     uv run scripts/gen_local_secrets.py --admin-url postgresql+psycopg://USER:PASSWORD@localhost:5432/privyflow
 
-Writes services/<service>/.env, which is git-ignored. Existing files are kept unless
---force is given. The generated runtime database password is random. These values are for
-local development only. Later phases add more generated secrets here.
+Writes services/<service>/.env and config/settings.json (a copy of the example). All three
+are git-ignored. Existing files are kept unless --force is given. The generated database
+passwords are random. These values are for local development only. Later phases add more
+generated secrets here.
 """
 
 import argparse
 import secrets
+import shutil
 import sys
 from pathlib import Path
 
@@ -17,19 +19,27 @@ from sqlalchemy.engine import make_url
 ROOT = Path(__file__).resolve().parents[1]
 SAN_ENV = Path("services/sanitization_service/.env")
 DESAN_ENV = Path("services/desanitization_service/.env")
+SETTINGS_FILE = Path("config/settings.json")
+SETTINGS_EXAMPLE = Path("config/settings.example.json")
 RUNTIME_ROLE = "privyflow_runtime"
+SETTINGS_ADMIN_ROLE = "privyflow_settings_admin"
+
+
+def _role_url(admin_url: str, role: str) -> str:
+    return (
+        make_url(admin_url)
+        .set(drivername="postgresql+psycopg", username=role, password=secrets.token_hex(24))
+        .render_as_string(hide_password=False)
+    )
 
 
 def _sanitization_env(admin_url: str) -> str:
-    runtime_url = (
-        make_url(admin_url)
-        .set(drivername="postgresql+psycopg", username=RUNTIME_ROLE, password=secrets.token_hex(24))
-        .render_as_string(hide_password=False)
-    )
     return (
         "# Local development only. Never commit this file.\n"
-        f"PRIVYFLOW_SAN_DATABASE_URL={runtime_url}\n"
+        f"PRIVYFLOW_SAN_DATABASE_URL={_role_url(admin_url, RUNTIME_ROLE)}\n"
         f"PRIVYFLOW_SAN_MIGRATION_DATABASE_URL={admin_url}\n"
+        "# Used only by scripts/settings.py, never by the running service.\n"
+        f"PRIVYFLOW_SAN_SETTINGS_ADMIN_DATABASE_URL={_role_url(admin_url, SETTINGS_ADMIN_ROLE)}\n"
     )
 
 
@@ -46,7 +56,7 @@ def generate(
     sanitization_url: str = "http://127.0.0.1:8001",
     force: bool = False,
 ) -> list[Path]:
-    """Write the env files and return the paths written."""
+    """Write the local files and return the paths written."""
     contents = {
         root / SAN_ENV: _sanitization_env(admin_url),
         root / DESAN_ENV: _desanitization_env(sanitization_url),
@@ -58,6 +68,11 @@ def generate(
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
         written.append(path)
+    settings = root / SETTINGS_FILE
+    if not settings.exists() or force:
+        settings.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / SETTINGS_EXAMPLE, settings)
+        written.append(settings)
     return written
 
 

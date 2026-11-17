@@ -287,6 +287,32 @@ Two properties follow and are tested: enabling an additional profile never unmas
 
 Coverage honesty: profiles name more entity types than the pilot can detect. The policy listing and each sanitization response include the entity types of the enabled profiles that have no recognizer (`uncovered_entity_types`). An optional strict flag, off by default, makes startup fail instead.
 
+### 9.10 Settings store (Sanitization Service)
+
+Operational settings live in one store per deployment, a file (default) or the database, chosen at startup. Secrets never go in either; they stay in the environment.
+
+Bootstrap settings (environment or the service `.env` file only): `PRIVYFLOW_SETTINGS_BACKEND` (`file` or `db`, default `file`), `PRIVYFLOW_SETTINGS_FILE` (default `config/settings.json`), the runtime database URL, keys, pepper, service secret, and API keys. Profile definitions are the versioned data files in section 9.9; the store holds which profiles each tenant enables.
+
+Content, schema version 1. Unknown keys are rejected at every level.
+
+| Field | Rule | Default |
+|---|---|---|
+| `schema_version` | Required, must be `1` | none |
+| `tenant_profiles` | Map of tenant ID (pattern in 9.2) to a non-empty list of known profile IDs | `{}` |
+| `default_ttl_seconds` | Integer, 60 to 3600 (the D5 default is also the ceiling) | 3600 |
+| `max_request_bytes` | Integer, at least 1024 | 262144 |
+| `strict_coverage` | Boolean | `false` |
+
+The internal client timeout in Q8 is not in this store. It belongs to the De-sanitization Service, which has no store and keeps it in its own settings.
+
+Rules shared by both backends: any field whose name looks like a secret (secret, password, token, pepper, key, credential, encryption, dsn, and similar) is rejected. Errors name the field and the reason, never a value. Loaded content is immutable, with a version (0 for the file backend) and a SHA-256 hash of the validated content, so key order and omitted defaults do not change the hash.
+
+Startup: settings load once. If loading fails (missing or invalid file, unreachable or empty database, bad backend value, hash mismatch) the service stays up but not ready: `/health/live` is 200 and `/health/ready` is 503. It never falls back to the other backend. A change takes effect on restart. Startup logs the backend, version and hash only.
+
+Database backend: tables `settings_snapshots` (append-only, highest version wins) and `settings_audit` (actions `import`, `export`, `activate`), created by migration `0002`. The runtime role has SELECT only. A separate settings admin role has SELECT and INSERT, no UPDATE or DELETE, and no access to `mapping_records`.
+
+Command line tool `uv run scripts/settings.py`: `validate`, `show`, `import` (prints a diff, `--dry-run`, writes nothing if invalid or unchanged) and `export` (refuses to overwrite without `--force`). Database commands use `PRIVYFLOW_SAN_SETTINGS_ADMIN_DATABASE_URL`. Exit codes: 0 done, 1 failed or invalid, 2 setup missing.
+
 ## 10. Acceptance criteria for the core engine
 
 - Both services run independently.

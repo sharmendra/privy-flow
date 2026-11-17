@@ -22,6 +22,9 @@ ALLOWED_FIELDS = (
     "latency_ms",
     "outcome",
     "error_category",
+    "settings_backend",
+    "settings_version",
+    "settings_hash",
 )
 
 logger = logging.getLogger(LOGGER_NAME)

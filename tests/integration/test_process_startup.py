@@ -6,12 +6,17 @@ import httpx
 
 from tests.support.leak import CANARIES, assert_no_leak
 from tests.support.process import ServiceProcess
+from tests.support.settings_data import write_settings_file
 
 
 def test_both_services_start_independently_and_report_health(
     empty_database_url: str, tmp_path: Path
 ) -> None:
-    san_env = {"PRIVYFLOW_SAN_DATABASE_URL": empty_database_url}
+    settings_file = write_settings_file(tmp_path / "settings.json")
+    san_env = {
+        "PRIVYFLOW_SAN_DATABASE_URL": empty_database_url,
+        "PRIVYFLOW_SETTINGS_FILE": str(settings_file),
+    }
     # The De-sanitization process gets no database setting at all.
     desan_env = {"PRIVYFLOW_DESAN_SANITIZATION_BASE_URL": "http://127.0.0.1:1"}
     with (

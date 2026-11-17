@@ -1,5 +1,6 @@
 """Sanitization Service application."""
 
+import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -7,18 +8,36 @@ from fastapi import FastAPI
 from sqlalchemy import Engine
 
 from app.api import health
-from app.core.config import SERVICE_NAME, SERVICE_VERSION
+from app.core.config import SERVICE_NAME, SERVICE_VERSION, load_settings
 from app.core.errors import register_error_handlers
-from app.core.logging import configure_logging
+from app.core.logging import configure_logging, log_event
 from app.core.middleware import RequestContextMiddleware
+from app.db.session import get_engine
+from app.settings.selector import load_snapshot
 
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
+    """Load settings once. A failure leaves the service alive but not ready, with no fallback."""
+    app.state.settings_snapshot = None
+    try:
+        bootstrap = load_settings()
+        engine = get_engine(app) if bootstrap.settings_backend == "db" else None
+        snapshot = load_snapshot(bootstrap, engine)
+    except Exception as exc:
+        log_event("settings_load_failed", logging.ERROR, error_category=type(exc).__name__)
+    else:
+        app.state.settings_snapshot = snapshot
+        log_event(
+            "settings_loaded",
+            settings_backend=snapshot.backend,
+            settings_version=snapshot.version,
+            settings_hash=snapshot.content_hash,
+        )
     yield
-    engine: Engine | None = getattr(app.state, "engine", None)
-    if engine is not None:
-        engine.dispose()
+    engine_in_use: Engine | None = getattr(app.state, "engine", None)
+    if engine_in_use is not None:
+        engine_in_use.dispose()
 
 
 def create_app() -> FastAPI:

@@ -128,11 +128,11 @@ def test_database_rejects_rows_that_violate_constraints(empty_database_url: str)
 
 
 def test_runtime_role_has_least_privilege(empty_database_url: str, database_admin_url: str) -> None:
-    from scripts.create_db_roles import drop_runtime_role, ensure_runtime_role
+    from scripts.create_db_roles import drop_role, ensure_role
 
     role = f"pf_test_role_{uuid.uuid4().hex[:8]}"
     password = uuid.uuid4().hex
-    ensure_runtime_role(empty_database_url, role, password)
+    ensure_role(empty_database_url, role, password)
     try:
         upgrade(empty_database_url, runtime_role=role)
         from sqlalchemy.engine import make_url
@@ -150,4 +150,4 @@ def test_runtime_role_has_least_privilege(empty_database_url: str, database_admi
             with pytest.raises(errors.InsufficientPrivilege):
                 conn.execute("CREATE TABLE sneaky (id int)")
     finally:
-        drop_runtime_role(empty_database_url, role)
+        drop_role(empty_database_url, role)

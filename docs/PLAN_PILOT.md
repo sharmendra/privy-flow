@@ -1,6 +1,6 @@
 # PLAN_PILOT.md
 
-Status: decisions D1 to D17 and questions Q1 to Q8 resolved on the recommended approach (owner instruction, 2026-11-17). Phase 1 (documentation) implemented 2026-11-17, with one criterion awaiting owner review. Phase 2 (service foundations) implemented 2026-11-17, with one criterion open (see below). Phases 2A onward are not started.
+Status: decisions D1 to D17 and questions Q1 to Q8 resolved on the recommended approach (owner instruction, 2026-11-17). Phase 1 (documentation) implemented 2026-11-17, with one criterion awaiting owner review. Phase 2 (service foundations) implemented 2026-11-17, with one criterion open (see below). Phase 2A (settings store) implemented 2026-11-17, with one criterion open (see below). Phases 3 onward are not started.
 
 ## Objective
 
@@ -265,17 +265,17 @@ Success criteria:
 What it builds: the `SettingsStore` interface, the settings validator and immutable snapshot, the file backend (default), the database backend with its migration revision, the backend selector, and the `scripts/settings.py` tool. Why here: the compliance profiles and every later configurable value read from it, so it must exist before phase 3. Phase 2A is numbered this way to keep the existing phase numbers stable.
 
 Success criteria:
-- [ ] With no backend setting, the service starts with the file backend and logs which backend and settings version it loaded (version and hash only).
-- [ ] `PRIVYFLOW_SETTINGS_BACKEND=db` starts the service with the database backend after `scripts/settings.py import` loads the same settings file; an invalid value for the backend setting fails startup.
-- [ ] One contract test suite runs against both backends (parametrized) and gets identical snapshots for identical content.
-- [ ] Validation tests pass for both backends: unknown keys, unknown profile ID, empty tenant profile list, TTL above the allowed maximum, size limit below the floor, and a field named like a secret each fail loading with a message that names the field and no value.
-- [ ] Missing or invalid file, or unreachable database with the db backend selected, fails startup and `/health/ready` returns 503; the service does not use the other backend (D17).
-- [ ] Switching works both ways: `export` then `import` round-trips to an identical snapshot hash, and restarting with the other backend yields the same effective policy for a test tenant.
-- [ ] The migration revision for the settings tables applies from an empty database and round-trips downgrade and upgrade.
-- [ ] A database test proves the runtime role cannot insert or update settings tables, and the admin role cannot read `mapping_records`.
-- [ ] `settings_audit` receives a row for each import with actor, version, and hash, and a canary secret never appears in it.
-- [ ] A change in the settings file is not applied until restart (documented behavior, tested).
-- [ ] `scripts/settings.py` runs on Windows and macOS through `uv run`, with `validate`, `show`, `export`, and `import`; `import` prints a diff and writes nothing if validation fails.
+- [x] With no backend setting, the service starts with the file backend and logs which backend and settings version it loaded (version and hash only). (`test_settings_startup.py`)
+- [x] `PRIVYFLOW_SETTINGS_BACKEND=db` starts the service with the database backend after `scripts/settings.py import` loads the same settings file; an invalid value for the backend setting fails startup. (Interpretation: "fails startup" means the process stays alive but not ready, `/health/live` 200 and `/health/ready` 503, consistent with D17. Also run by hand against the `privyflow` database.)
+- [x] One contract test suite runs against both backends (parametrized) and gets identical snapshots for identical content. (Content and hash are identical; `version` differs by design, 0 for the file backend.)
+- [x] Validation tests pass for both backends: unknown keys, unknown profile ID, empty tenant profile list, TTL above the allowed maximum, size limit below the floor, and a field named like a secret each fail loading with a message that names the field and no value. (14 cases per backend, plus unit tests of the validator.)
+- [x] Missing or invalid file, or unreachable database with the db backend selected, fails startup and `/health/ready` returns 503; the service does not use the other backend (D17). (Tests put valid settings in the other backend and show they are not used.)
+- [x] Switching works both ways: `export` then `import` round-trips to an identical snapshot hash, and restarting with the other backend yields the same effective policy for a test tenant. (The effective policy resolver is phase 3, so the test compares the tenant's enabled profiles and the snapshot hash.)
+- [x] The migration revision for the settings tables applies from an empty database and round-trips downgrade and upgrade. (`test_settings_roles.py`; the schema also matches the ORM models.)
+- [x] A database test proves the runtime role cannot insert or update settings tables, and the admin role cannot read `mapping_records`. (The runtime role also cannot delete or truncate; the admin role can append but not update or delete.)
+- [x] `settings_audit` receives a row for each import with actor, version, and hash, and a canary secret never appears in it. (`test_settings_audit.py`; an unchanged import writes nothing.)
+- [x] A change in the settings file is not applied until restart (documented behavior, tested).
+- [ ] `scripts/settings.py` runs on Windows and macOS through `uv run`, with `validate`, `show`, `export`, and `import`; `import` prints a diff and writes nothing if validation fails. (Open: verified on Windows only, by tests and by hand. macOS has not been run.)
 
 ### Phase 3. Detection and policy
 

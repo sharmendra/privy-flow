@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from scripts.gen_local_secrets import DESAN_ENV, SAN_ENV, generate
+from scripts.gen_local_secrets import DESAN_ENV, SAN_ENV, SETTINGS_FILE, generate
 
 
 def _paths(root: Path) -> tuple[Path, Path]:
@@ -12,7 +12,7 @@ def _paths(root: Path) -> tuple[Path, Path]:
 def test_generate_writes_one_env_file_per_service(tmp_path: Path) -> None:
     written = generate(tmp_path, admin_url="postgresql+psycopg://admin:adminpw@localhost:5432/db")
     san, desan = _paths(tmp_path)
-    assert written == [san, desan]
+    assert written == [san, desan, tmp_path / SETTINGS_FILE]
     san_text = san.read_text(encoding="utf-8")
     assert "PRIVYFLOW_SAN_DATABASE_URL=postgresql+psycopg://privyflow_runtime:" in san_text
     assert "PRIVYFLOW_SAN_MIGRATION_DATABASE_URL=postgresql+psycopg://admin:adminpw@" in san_text
@@ -44,3 +44,22 @@ def test_existing_files_are_kept_unless_forced(tmp_path: Path) -> None:
     assert san.read_text(encoding="utf-8") == "KEEP ME"
     assert san in generate(tmp_path, admin_url=url, force=True)
     assert san.read_text(encoding="utf-8") != "KEEP ME"
+
+
+def test_sanitization_env_has_separate_settings_admin_credentials(tmp_path: Path) -> None:
+    generate(tmp_path, admin_url="postgresql+psycopg://admin:adminpw@localhost:5432/db")
+    text = _paths(tmp_path)[0].read_text(encoding="utf-8")
+    lines = dict(line.split("=", 1) for line in text.splitlines() if "=" in line)
+    runtime = lines["PRIVYFLOW_SAN_DATABASE_URL"]
+    settings_admin = lines["PRIVYFLOW_SAN_SETTINGS_ADMIN_DATABASE_URL"]
+    assert "privyflow_settings_admin:" in settings_admin
+    assert runtime.split("@")[0] != settings_admin.split("@")[0]
+
+
+def test_local_settings_file_is_a_valid_copy_of_the_example(tmp_path: Path) -> None:
+    import json
+
+    generate(tmp_path, admin_url="postgresql+psycopg://admin:adminpw@localhost:5432/db")
+    created = json.loads((tmp_path / SETTINGS_FILE).read_text(encoding="utf-8"))
+    assert created["schema_version"] == 1
+    assert "tenant_profiles" in created

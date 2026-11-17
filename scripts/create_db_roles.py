@@ -1,11 +1,17 @@
-"""Create the Sanitization Service runtime database role.
+"""Create the Sanitization Service database roles.
 
     uv run scripts/create_db_roles.py
 
 Reads services/sanitization_service/.env (written by scripts/gen_local_secrets.py). It uses
-PRIVYFLOW_SAN_MIGRATION_DATABASE_URL as the admin connection and creates the role named in
-PRIVYFLOW_SAN_DATABASE_URL with that URL's password. Run it before the migration so the
-migration can grant the role its table privileges. Safe to run again: it updates the password.
+PRIVYFLOW_SAN_MIGRATION_DATABASE_URL as the admin connection and creates two login roles
+with no extra privileges:
+
+- the runtime role named in PRIVYFLOW_SAN_DATABASE_URL, used by the running service
+- the settings admin role named in PRIVYFLOW_SAN_SETTINGS_ADMIN_DATABASE_URL, used only by
+  scripts/settings.py
+
+Run it before the migrations so they can grant each role its table privileges. Safe to run
+again: it resets the passwords.
 """
 
 import re
@@ -31,7 +37,7 @@ def _check(role: str) -> None:
         raise ValueError("invalid role name")
 
 
-def ensure_runtime_role(admin_url: str, role: str, password: str) -> None:
+def ensure_role(admin_url: str, role: str, password: str) -> None:
     """Create the login role with no extra privileges, or reset its password."""
     _check(role)
     with psycopg.connect(_dsn(admin_url), autocommit=True) as conn:
@@ -43,7 +49,7 @@ def ensure_runtime_role(admin_url: str, role: str, password: str) -> None:
         conn.execute(statement)
 
 
-def drop_runtime_role(admin_url: str, role: str) -> None:
+def drop_role(admin_url: str, role: str) -> None:
     """Remove the role and its privileges in the connected database. Used by tests."""
     _check(role)
     with psycopg.connect(_dsn(admin_url), autocommit=True) as conn:
@@ -54,16 +60,20 @@ def drop_runtime_role(admin_url: str, role: str) -> None:
 def main() -> int:
     values = dotenv_values(ENV_FILE)
     admin_url = values.get("PRIVYFLOW_SAN_MIGRATION_DATABASE_URL")
-    runtime_url = values.get("PRIVYFLOW_SAN_DATABASE_URL")
-    if not admin_url or not runtime_url:
-        print(f"Missing database URLs in {ENV_FILE}. Run scripts/gen_local_secrets.py first.")
+    role_urls = [
+        values.get("PRIVYFLOW_SAN_DATABASE_URL"),
+        values.get("PRIVYFLOW_SAN_SETTINGS_ADMIN_DATABASE_URL"),
+    ]
+    if not admin_url or not all(role_urls):
+        print(f"Missing database URLs in {ENV_FILE}. Run scripts/gen_local_secrets.py --force.")
         return 1
-    runtime = make_url(runtime_url)
-    if runtime.username is None or runtime.password is None:
-        print("The runtime database URL needs a user name and password.")
-        return 1
-    ensure_runtime_role(admin_url, runtime.username, runtime.password)
-    print(f"Role {runtime.username} is ready.")
+    for role_url in role_urls:
+        parsed = make_url(role_url or "")
+        if parsed.username is None or parsed.password is None:
+            print("Each role database URL needs a user name and password.")
+            return 1
+        ensure_role(admin_url, parsed.username, parsed.password)
+        print(f"Role {parsed.username} is ready.")
     return 0
 
 

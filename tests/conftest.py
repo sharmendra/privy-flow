@@ -10,6 +10,7 @@ import httpx
 import pytest
 
 from tests.support.service_loader import load_service_app
+from tests.support.settings_data import write_settings_file
 
 SUITES = ("unit", "integration", "security", "evaluation", "e2e")
 
@@ -40,7 +41,7 @@ def anyio_backend() -> str:
 def isolated_service_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Remove service settings from the environment and ignore any local .env file."""
     for name in list(os.environ):
-        if name.startswith(("PRIVYFLOW_SAN_", "PRIVYFLOW_DESAN_")):
+        if name.startswith(("PRIVYFLOW_SAN_", "PRIVYFLOW_DESAN_", "PRIVYFLOW_SETTINGS_")):
             monkeypatch.delenv(name)
     absent = str(tmp_path / "absent.env")
     monkeypatch.setenv("PRIVYFLOW_SAN_ENV_FILE", absent)
@@ -68,8 +69,10 @@ def _factory(service: str, defaults: dict[str, str], monkeypatch: pytest.MonkeyP
 
 
 @pytest.fixture
-def sanitization_app_factory(monkeypatch: pytest.MonkeyPatch) -> AppFactory:
-    return _factory("sanitization_service", DEFAULT_SANITIZATION_ENV, monkeypatch)
+def sanitization_app_factory(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> AppFactory:
+    settings_file = write_settings_file(tmp_path / "default-settings.json")
+    defaults = {**DEFAULT_SANITIZATION_ENV, "PRIVYFLOW_SETTINGS_FILE": str(settings_file)}
+    return _factory("sanitization_service", defaults, monkeypatch)
 
 
 @pytest.fixture
@@ -81,9 +84,11 @@ def desanitization_app_factory(monkeypatch: pytest.MonkeyPatch) -> AppFactory:
 async def client_for(
     app: Any, raise_app_exceptions: bool = True
 ) -> AsyncGenerator[httpx.AsyncClient]:
+    """A client for an in-process app, with application startup and shutdown run."""
     transport = httpx.ASGITransport(app=app, raise_app_exceptions=raise_app_exceptions)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        yield client
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            yield client
 
 
 @pytest.fixture

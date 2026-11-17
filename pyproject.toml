@@ -69,5 +69,6 @@ pythonVersion = "3.11"
 executionEnvironments = [
     { root = "services/sanitization_service" },
     { root = "services/desanitization_service" },
-    { root = "." },
+    # scripts/settings.py is a Sanitization Service admin tool and imports its `app` package.
+    { root = ".", extraPaths = ["services/sanitization_service"] },
 ]
