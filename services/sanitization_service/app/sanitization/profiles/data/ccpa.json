@@ -1,0 +1,17 @@
+{
+  "id": "ccpa",
+  "version": 1,
+  "status": "not_reviewed_by_legal",
+  "regime": "CCPA/CPRA",
+  "description": "Personal information categories named by CCPA/CPRA, as read by the project team.",
+  "max_ttl_seconds": 3600,
+  "entities": [
+    {"type": "PERSON", "action": "placeholder"},
+    {"type": "EMAIL", "action": "placeholder"},
+    {"type": "PHONE", "action": "placeholder"},
+    {"type": "ADDRESS", "action": "placeholder"},
+    {"type": "IP_ADDRESS", "action": "placeholder"},
+    {"type": "US_SSN", "action": "placeholder"},
+    {"type": "LOCATION", "action": "placeholder"}
+  ]
+}

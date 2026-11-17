@@ -1,0 +1,18 @@
+{
+  "id": "gdpr",
+  "version": 1,
+  "status": "not_reviewed_by_legal",
+  "regime": "GDPR",
+  "description": "Default profile. Personal data categories named by GDPR, as read by the project team.",
+  "max_ttl_seconds": 3600,
+  "entities": [
+    {"type": "PERSON", "action": "placeholder"},
+    {"type": "EMAIL", "action": "placeholder"},
+    {"type": "PHONE", "action": "placeholder"},
+    {"type": "ADDRESS", "action": "placeholder"},
+    {"type": "IP_ADDRESS", "action": "placeholder"},
+    {"type": "NATIONAL_ID", "action": "placeholder"},
+    {"type": "LOCATION", "action": "placeholder"},
+    {"type": "ONLINE_IDENTIFIER", "action": "placeholder"}
+  ]
+}

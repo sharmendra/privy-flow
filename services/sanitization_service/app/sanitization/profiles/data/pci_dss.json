@@ -1,0 +1,12 @@
+{
+  "id": "pci_dss",
+  "version": 1,
+  "status": "not_reviewed_by_legal",
+  "regime": "PCI DSS",
+  "description": "Cardholder data. The security code must never be retained, so it is redacted.",
+  "max_ttl_seconds": 900,
+  "entities": [
+    {"type": "FINANCIAL", "action": "placeholder"},
+    {"type": "CARD_SECURITY_CODE", "action": "redact"}
+  ]
+}

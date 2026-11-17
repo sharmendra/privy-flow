@@ -1,0 +1,28 @@
+{
+  "_comment": "Shared entity-type list. Synthetic and unreviewed by legal. priority breaks ties between overlapping spans of equal length (higher wins). pilot_recognizer marks types the pilot can detect (decision D1).",
+  "status": "not_reviewed_by_legal",
+  "types": [
+    {"type": "SECRET", "priority": 100, "pilot_recognizer": false, "description": "Credentials, API keys, passwords"},
+    {"type": "CARD_SECURITY_CODE", "priority": 95, "pilot_recognizer": false, "description": "Card verification value (CVV/CVC)"},
+    {"type": "FINANCIAL", "priority": 90, "pilot_recognizer": true, "description": "Payment card number (Luhn-valid)"},
+    {"type": "US_SSN", "priority": 85, "pilot_recognizer": true, "description": "US Social Security number"},
+    {"type": "IN_AADHAAR", "priority": 84, "pilot_recognizer": false, "description": "India Aadhaar number"},
+    {"type": "IN_PAN", "priority": 83, "pilot_recognizer": true, "description": "India Permanent Account Number"},
+    {"type": "NATIONAL_ID", "priority": 80, "pilot_recognizer": false, "description": "Other government-issued identity number"},
+    {"type": "HEALTH_PLAN_NUMBER", "priority": 75, "pilot_recognizer": false, "description": "Health plan beneficiary number"},
+    {"type": "MEDICAL_RECORD_NUMBER", "priority": 74, "pilot_recognizer": false, "description": "Medical record number"},
+    {"type": "ACCOUNT_NUMBER", "priority": 70, "pilot_recognizer": false, "description": "Bank or other account number"},
+    {"type": "IN_IFSC", "priority": 65, "pilot_recognizer": false, "description": "India bank branch code (IFSC)"},
+    {"type": "EMAIL", "priority": 60, "pilot_recognizer": true, "description": "Email address"},
+    {"type": "PHONE", "priority": 55, "pilot_recognizer": true, "description": "Telephone number"},
+    {"type": "IP_ADDRESS", "priority": 50, "pilot_recognizer": true, "description": "IPv4 or IPv6 address"},
+    {"type": "DEVICE_ID", "priority": 45, "pilot_recognizer": false, "description": "Device identifier or serial number"},
+    {"type": "VEHICLE_ID", "priority": 44, "pilot_recognizer": false, "description": "Vehicle identifier or license plate"},
+    {"type": "ONLINE_IDENTIFIER", "priority": 40, "pilot_recognizer": false, "description": "Cookie, advertising or account handle identifier"},
+    {"type": "URL", "priority": 35, "pilot_recognizer": false, "description": "Web address"},
+    {"type": "PERSON", "priority": 30, "pilot_recognizer": false, "description": "Person name"},
+    {"type": "ADDRESS", "priority": 25, "pilot_recognizer": false, "description": "Postal address"},
+    {"type": "LOCATION", "priority": 20, "pilot_recognizer": false, "description": "Geographic location"},
+    {"type": "DATE", "priority": 10, "pilot_recognizer": false, "description": "Date related to an individual"}
+  ]
+}

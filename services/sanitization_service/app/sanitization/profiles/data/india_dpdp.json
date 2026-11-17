@@ -1,0 +1,19 @@
+{
+  "id": "india_dpdp",
+  "version": 1,
+  "status": "not_reviewed_by_legal",
+  "regime": "DPDP Act 2023, SPDI Rules, Aadhaar rules",
+  "description": "Personal and sensitive personal data under Indian rules, as read by the project team.",
+  "max_ttl_seconds": 3600,
+  "entities": [
+    {"type": "PERSON", "action": "placeholder"},
+    {"type": "EMAIL", "action": "placeholder"},
+    {"type": "PHONE", "action": "placeholder"},
+    {"type": "ADDRESS", "action": "placeholder"},
+    {"type": "IN_AADHAAR", "action": "placeholder"},
+    {"type": "IN_PAN", "action": "placeholder"},
+    {"type": "IN_IFSC", "action": "placeholder"},
+    {"type": "FINANCIAL", "action": "placeholder"},
+    {"type": "SECRET", "action": "placeholder"}
+  ]
+}

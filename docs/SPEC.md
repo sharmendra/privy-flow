@@ -138,20 +138,152 @@ Do not add out-of-scope modules or dependencies for speculative future use.
 - Use least-privilege database and service credentials.
 - Treat detection and sanitization as risk reduction, not guaranteed anonymization.
 
-## 9. API surface — initial proposal
+## 9. API surface
 
-Final schemas and route names must be approved and recorded before implementation.
+Status: final for the pilot, approved 2026-11-17 (`docs/adr/0001-pilot-decisions.md`). Changes need owner approval. Contracts are service-local; compatibility is tested at the HTTP boundary.
 
-| Service | Proposed endpoint | Purpose |
+### 9.1 Endpoints
+
+| Service | Endpoint | Auth | Purpose |
+|---|---|---|---|
+| Sanitization | `GET /health/live` | none | Process liveness |
+| Sanitization | `GET /health/ready` | none | Settings loaded and database reachable |
+| Sanitization | `POST /api/v1/sanitizations` | `X-API-Key` | Sanitize submitted text |
+| Sanitization | `GET /api/v1/policies` | `X-API-Key` | Calling tenant's effective policy |
+| Sanitization internal | `POST /internal/v1/mappings/retrieve` | `X-Service-Secret` | Mapping retrieval for De-sanitization |
+| De-sanitization | `GET /health/live` | none | Process liveness |
+| De-sanitization | `GET /health/ready` | none | Configuration valid (no database check) |
+| De-sanitization | `POST /api/v1/desanitizations` | `X-API-Key` | Restore authorized placeholders |
+
+Revocation has no public endpoint in the pilot. It is a repository function with an admin tool entry point (Q3).
+
+### 9.2 Common rules
+
+- Tenant is derived from the authenticated API key (public routes) and never read from the body. Each service has its own key list. API keys and the service secret are never accepted on each other's routes.
+- Identifier patterns: `request_scope_id` matches `^[A-Za-z0-9._:-]{1,128}$`. Tenant ID matches `^[a-z0-9][a-z0-9_-]{2,62}$`. `X-Correlation-ID` is accepted if it matches `^[A-Za-z0-9._-]{8,64}$`, otherwise a new ID is generated. The ID is returned in the `X-Correlation-ID` header and in every error body.
+- `restore_reference` format: `pf1_` followed by 43 URL-safe base64 characters (32 random bytes). A value that does not match this format is rejected with the same 404 as an unknown reference.
+- Request bodies are JSON. Unknown fields are rejected (422). Body size is limited by the `max_request_bytes` setting (default 262144, floor 1024); larger bodies return 413.
+- All timestamps are UTC, ISO 8601.
+
+### 9.3 Sanitization: `POST /api/v1/sanitizations`
+
+Request:
+
+```json
+{ "text": "string, 1 to the size limit", "request_scope_id": "string", "policy_id": "effective" }
+```
+
+`policy_id` must be `effective`, the tenant's resolved policy. Any other value returns 422 `unsupported_policy`. A body field naming profiles or a tenant is rejected as an unknown field (422).
+
+Response 200:
+
+```json
+{
+  "sanitized_text": "string",
+  "restore_reference": "string or null",
+  "expires_at": "datetime or null",
+  "profiles_applied": ["gdpr"],
+  "uncovered_entity_types": ["PERSON"],
+  "entity_count": 0,
+  "correlation_id": "string"
+}
+```
+
+`restore_reference` and `expires_at` are null when nothing reversible was stored (no entities, or every entity redacted). `entity_count` counts masked spans of both actions. Whitespace-only text is valid and returns unchanged with `entity_count` 0.
+
+### 9.4 Sanitization: `GET /api/v1/policies`
+
+Response 200, the calling tenant's own configuration only:
+
+```json
+{
+  "policy_id": "effective",
+  "profiles": [{ "id": "gdpr", "version": 1 }],
+  "entity_types": [{ "type": "EMAIL", "action": "placeholder" }],
+  "max_ttl_seconds": 3600,
+  "uncovered_entity_types": ["PERSON"]
+}
+```
+
+### 9.5 Sanitization internal: `POST /internal/v1/mappings/retrieve`
+
+Request:
+
+```json
+{ "restore_reference": "string", "tenant_id": "string", "request_scope_id": "string" }
+```
+
+Response 200 (no other fields are allowed):
+
+```json
+{ "mappings": [{ "placeholder": "[EMAIL_001]", "value": "string" }], "policy_id": "effective" }
+```
+
+The response holds at most 10000 mappings. The lookup requires the credential digest, tenant, and request scope to all match, and the record to be unexpired, unrevoked, and undeleted. Version compatibility: the path carries the version (`v1`); breaking changes get a new path.
+
+### 9.6 De-sanitization: `POST /api/v1/desanitizations`
+
+Request:
+
+```json
+{ "sanitized_text": "string, 1 to the size limit", "restore_reference": "string", "request_scope_id": "string" }
+```
+
+Response 200:
+
+```json
+{ "restored_text": "string", "restored_count": 0, "unmatched_placeholder_count": 0, "correlation_id": "string" }
+```
+
+Restoration is single pass, left to right, exact match only. Placeholders not in the authorized mapping, altered placeholders, malformed look-alikes, and `[TYPE_REDACTED]` markers are left untouched. A substring that has the placeholder shape but is not in the mapping is counted in `unmatched_placeholder_count`. The restored text is limited to `max_output_bytes` (default 1048576); larger output returns 413 `output_too_large`.
+
+Internal client behavior: connect and read timeout from the `internal_client_timeout_seconds` setting (default 3), at most 2 retries, only for connection errors and 503. Sanitization unavailable or timed out returns 503 `dependency_unavailable`.
+
+### 9.7 Error body and codes
+
+```json
+{ "error": { "code": "string", "message": "string", "correlation_id": "string" } }
+```
+
+Messages are fixed text. They never include input, values, references, keys, SQL, paths, or traces.
+
+| HTTP | Code | When |
 |---|---|---|
-| Sanitization | `GET /health/live` | Process liveness |
-| Sanitization | `GET /health/ready` | Dependency readiness |
-| Sanitization | `POST /api/v1/sanitizations` | Sanitize submitted text |
-| Sanitization | `GET /api/v1/policies` | List available policy metadata |
-| Sanitization internal | `POST /internal/v1/mappings/retrieve` | Authenticated mapping retrieval for De-sanitization |
-| De-sanitization | `GET /health/live` | Process liveness |
-| De-sanitization | `GET /health/ready` | Dependency readiness |
-| De-sanitization | `POST /api/v1/desanitizations` | Restore authorized placeholders |
+| 401 | `unauthorized` | Missing or invalid API key or service secret |
+| 404 | `restore_reference_not_found` | Unknown, malformed, expired, revoked, deleted, cross-tenant, or cross-scope reference (D7). Same body and shape for every cause. |
+| 413 | `payload_too_large` | Request body over the size limit |
+| 413 | `output_too_large` | Restored text over the output limit |
+| 422 | `validation_error` | Wrong type, missing or unknown field, empty text, bad identifier |
+| 422 | `unsupported_policy` | `policy_id` is not `effective` |
+| 500 | `internal_error` | Unexpected error; details only in redacted logs |
+| 503 | `dependency_unavailable` | Database unavailable, or Sanitization unavailable or timed out |
+
+Health endpoints return `{ "status": "ok" }` (200) or `{ "status": "unavailable" }` (503), with no detail.
+
+### 9.8 Idempotency and retries
+
+Sanitization is not idempotent: each call creates a new mapping and reference, so clients must not blindly retry after a timeout. Restoration is read-only and reusable within the TTL, so it is safe to retry.
+
+### 9.9 Compliance profiles and restrictiveness rules
+
+A compliance profile is a versioned data file that states what one regime asks PrivyFlow to protect. Profile files and the shared entity-type list are in `services/sanitization_service/app/sanitization/profiles/data/`. They are marked `not_reviewed_by_legal`. Enabling a profile is not a claim of compliance.
+
+Each profile declares `id`, `version`, `entities` (type and action, `placeholder` or `redact`), and `max_ttl_seconds`. Initial profiles: `gdpr` (default), `india_dpdp`, `hipaa`, `pci_dss`, `glba`, `ccpa`.
+
+Enabled profiles are set per tenant in the settings store as a map of tenant ID to profile IDs. The tenant is the one derived from the API key. A tenant with no entry gets `gdpr`. Startup fails on an empty list, an unknown profile ID, or a malformed tenant ID. Per-request selection is not supported.
+
+The more restrictive result always wins:
+
+| Setting | Resolution when several enabled profiles disagree |
+|---|---|
+| Entity types | Union: an entity is masked if any enabled profile names it. |
+| Action per entity | `redact` (irreversible, no mapping stored) beats `placeholder` (reversible). A type no profile names is not masked. |
+| Restore-reference lifetime | The smallest `max_ttl` among enabled profiles, and never longer than the default TTL (D5). |
+| Overlapping spans | D6 picks the winning span; it then takes the most restrictive action among the spans it overlapped. |
+
+Two properties follow and are tested: enabling an additional profile never unmasks an entity and never lengthens a lifetime, and the result does not depend on the order profiles are listed.
+
+Coverage honesty: profiles name more entity types than the pilot can detect. The policy listing and each sanitization response include the entity types of the enabled profiles that have no recognizer (`uncovered_entity_types`). An optional strict flag, off by default, makes startup fail instead.
 
 ## 10. Acceptance criteria for the core engine
 

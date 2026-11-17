@@ -74,6 +74,8 @@ Tick each box only after verifying it with tests, commands, or API calls, and re
 
 ## 4. Immediate next steps
 
+The pilot (`docs/PLAN_PILOT.md`) is a thin slice through phases 1 to 7 below. Its Phase 1 (decisions, contracts, threat model) is documented; items 3 and 4 are settled for the pilot in `docs/adr/0001-pilot-decisions.md` and `docs/SPEC.md` section 9. The roadmap and its criteria above are unchanged.
+
 1. Inspect the current repository and identify any old Extraction Service / Privacy Service scaffolding.
 2. Reconcile the codebase with the approved Sanitization / De-sanitization architecture.
 3. Finalize public API and internal mapping API contracts.

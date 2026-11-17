@@ -1,0 +1,14 @@
+{
+  "id": "glba",
+  "version": 1,
+  "status": "not_reviewed_by_legal",
+  "regime": "GLBA, SOX",
+  "description": "Nonpublic financial information categories, as read by the project team.",
+  "max_ttl_seconds": 3600,
+  "entities": [
+    {"type": "ACCOUNT_NUMBER", "action": "placeholder"},
+    {"type": "US_SSN", "action": "placeholder"},
+    {"type": "FINANCIAL", "action": "placeholder"},
+    {"type": "PERSON", "action": "placeholder"}
+  ]
+}

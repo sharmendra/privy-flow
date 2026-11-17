@@ -1,0 +1,23 @@
+{
+  "id": "hipaa",
+  "version": 1,
+  "status": "not_reviewed_by_legal",
+  "regime": "HIPAA Safe Harbor",
+  "description": "The 18 Safe Harbor identifier groups, mapped to the types PrivyFlow models.",
+  "max_ttl_seconds": 1800,
+  "entities": [
+    {"type": "PERSON", "action": "placeholder"},
+    {"type": "ADDRESS", "action": "placeholder"},
+    {"type": "DATE", "action": "placeholder"},
+    {"type": "PHONE", "action": "placeholder"},
+    {"type": "EMAIL", "action": "placeholder"},
+    {"type": "US_SSN", "action": "placeholder"},
+    {"type": "MEDICAL_RECORD_NUMBER", "action": "placeholder"},
+    {"type": "HEALTH_PLAN_NUMBER", "action": "placeholder"},
+    {"type": "ACCOUNT_NUMBER", "action": "placeholder"},
+    {"type": "IP_ADDRESS", "action": "placeholder"},
+    {"type": "URL", "action": "placeholder"},
+    {"type": "DEVICE_ID", "action": "placeholder"},
+    {"type": "VEHICLE_ID", "action": "placeholder"}
+  ]
+}

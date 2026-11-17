@@ -94,13 +94,38 @@ Not verified:
 - The Locust script has not been run.
 - Coverage enforcement (80%) is wired in `scripts/run_tests.py` but activates only once service code exists; it has not been exercised.
 
+### Pilot plan progress (`docs/PLAN_PILOT.md`)
+
+| Phase | State |
+|---|---|
+| 1. Decisions, contracts, threat model | Documentation complete 2026-11-17. One criterion open: owner review of the profile files (see below). |
+| 2, 2A, 3 to 8 | Not started |
+
+Phase 1 delivered (documentation and data only, no service code, no test changes):
+
+- `docs/adr/0001-pilot-decisions.md`: D1 to D17 recorded as approved, plus fixed conventions (placeholder and redact markers, synthetic data ranges).
+- `docs/SPEC.md` section 9: final schemas, error codes, identifier patterns, and the restrictiveness rules for all five endpoints.
+- `docs/THREAT_MODEL.md`: attackers, mitigations, and the planned proving tests. All tests are pending until their phases run.
+- Profile data in `services/sanitization_service/app/sanitization/profiles/data/`: six profiles (`gdpr`, `india_dpdp`, `hipaa`, `pci_dss`, `glba`, `ccpa`) and `entity_types.json`. All are marked `not_reviewed_by_legal`. They are data only; no loader exists yet.
+
+Phase 1 evidence, recorded 2026-11-17, Windows:
+
+| Command | Result |
+|---|---|
+| `uv run scripts/run_tests.py all` | 21 passed, 0 failed, 63 skipped (same as the baseline above) |
+| `uv run scripts/run_tests.py lint` | Ruff check and format check passed |
+| `uv run pyright` | 0 errors, 0 warnings |
+| JSON parse and cross-check of the seven profile data files | All parse; every profile entity type exists in `entity_types.json`; six types are marked as having a pilot recognizer |
+
+Profile contents to review (owner action, not yet done): which entity types each profile names; the `max_ttl_seconds` values (gdpr 3600, india_dpdp 3600, hipaa 1800, pci_dss 900, glba 3600, ccpa 3600), which are my choices and not taken from any regulation; and `pci_dss` setting `FINANCIAL` to `placeholder`, which stores encrypted card numbers in the vault and may bring the vault into PCI scope. Setting it to `redact` would avoid that but makes card numbers unrestorable.
+
 ## 5. Validation checklist
 
 - [ ] Inspect the repository and remove or archive obsolete extraction-service scaffolding only after review.
 - [ ] Confirm separate Sanitization and De-sanitization applications.
 - [ ] Confirm Sanitization Service owns the mapping database and migrations.
 - [ ] Confirm De-sanitization has no mapping database credentials.
-- [ ] Define and approve public and internal API contracts.
+- [x] Define and approve public and internal API contracts. Pilot contracts: `docs/SPEC.md` section 9, approved 2026-11-17.
 - [ ] Implement authentication and authorization boundaries.
 - [ ] Implement recognizer and policy baseline.
 - [ ] Implement placeholder generation and collision handling.
@@ -114,11 +139,10 @@ Not verified:
 
 ## 6. Known risks and open decisions
 
-- Trusted source of tenant identity and caller authorization must be selected.
-- Service-to-service authentication mechanism must be approved.
-- Production key-management/KMS design is not selected.
-- Policy semantics for overlapping entities, repeated values, and ambiguous detections need explicit definition.
-- Restoration credential lifetime, one-time-use behavior, and revocation semantics need approval.
+- Resolved for the pilot (ADR 0001, 2026-11-17): tenant identity and caller authorization (per-tenant API keys, D2), service-to-service authentication (shared secret, D3), overlap policy (D6), restoration lifetime, reuse, and revocation (D5). These are pilot-only mechanisms. A production identity provider, mTLS or signed tokens, and the replacement for the shared secret are still open.
+- Production key-management/KMS design is not selected (pilot uses an environment-variable key, D4).
+- One-time-use restoration is not built; reuse within the TTL is accepted (D5).
+- Profile contents are unreviewed by legal; no compliance claim is made (D13).
 - Audit retention and deletion requirements need definition.
 - Detection quality must be evaluated against representative data; no perfect-detection claim is valid.
 
